@@ -1,0 +1,95 @@
+# ── Node definitions ──────────────────────────────────────────────────────────
+# Each property declares its source:
+#   source: gleif    → value is populated by a GLEIF API lookup (no API key needed).
+#                      The LLM only provides the search term (from_field / to_field).
+#                      The script will skip the triple if GLEIF returns no match.
+#   source: llm      → value is extracted directly by the LLM and stored as-is.
+#                      Mark optional: true if the field may be absent in some documents.
+#   source: pipeline → value is auto-populated by the pipeline (no LLM, no API).
+#                      Use pipeline_field to name the context key:
+#                        pipeline_field: doc_path  → absolute path of the source document
+#
+# Every node table must have exactly one primary_key property.
+#
+# semantic_types: List of accepted type values for this node. For GLEIF nodes,
+#   this filters by entity category (e.g. "GENERAL", "BRANCH", "FUND",
+#   "SOLE_PROPRIETOR") — triples whose resolved entity category does not match
+#   any listed value are dropped. For UMLS nodes, this lists semantic type names
+#   (e.g. "Molecular Function") or TUI codes (e.g. "T044") used to filter
+#   UMLS candidates. Optional — omit to accept any resolved entity.
+
+nodes:
+  Corporation:
+    description: "A legal entity (company, firm) that supplies or receives products/services. Examples: Nvidia Corporation, TSMC, Samsung Electronics."
+    semantic_types:
+      - "GENERAL"
+    properties:
+      - name: lei
+        type: STRING
+        source: gleif
+        primary_key: true
+      - name: name
+        type: STRING
+        source: gleif
+      - name: jurisdiction
+        type: STRING
+        source: gleif
+        optional: true
+      - name: registration_status
+        type: STRING
+        source: gleif
+        optional: true
+      - name: status
+        type: STRING
+        source: gleif
+        optional: true
+
+
+# ── Relationship definitions ───────────────────────────────────────────────────
+# from_node / to_node must match a key defined in nodes: above.
+# from_field / to_field are the LLM output field names used as GLEIF search terms.
+# They MUST be distinct even when from_node and to_node are the same label.
+#
+# Relationships support an optional 'properties' block for LLM-extracted
+# edge-level attributes (only source: llm is supported here).
+
+relationships:
+
+  - rel_type: PROVIDES
+    from_node: Corporation
+    from_field: supplier_name
+    from_hint: "legal name of the supplier corporation — the one that manufactures, produces, or sells the product or service"
+    to_node: Corporation
+    to_field: customer_name
+    to_hint: "legal name of the customer corporation — the one that buys, deploys, adopts, or uses the product or service"
+    extract_prompt: >
+      Every (supplier_name, customer_name) pair where one company supplies
+      products or services to another company, including products "designed for",
+      "optimized for", or intended for deployment in the customer's platforms or systems.
+      Return one entry per unique (supplier, customer) pair; list ALL products supplied in that pair.
+      DIRECTION RULE: supplier_name is always the maker/seller; customer_name is always the deployer/buyer/user.
+      If the text says "Company A is deploying [Product] nodes/chips/hardware", identify who makes [Product]
+      and set that maker as supplier_name and Company A as customer_name — NOT the reverse.
+      Example: "Google is deploying Blackwell nodes" → supplier_name=NVIDIA (makes Blackwell), customer_name=Google.
+    examples:
+      - supplier_name: "NVIDIA Corporation"
+        customer_name: "Google LLC"
+      - supplier_name: "Taiwan Semiconductor Manufacturing Company"
+        customer_name: "Apple Inc."
+      - supplier_name: "NVIDIA Corporation"
+        customer_name: "Amazon.com, Inc."
+    properties:
+      - name: products
+        type: STRING[]
+        source: llm
+        hint: "list of all products or services the supplier provides to this customer. Concise, identifiable product names mentioned by the document only."
+        optional: true
+      - name: publication_date
+        type: STRING
+        source: llm
+        hint: "publication date of the source article in ISO 8601 format (e.g. 2026-03-16). Extract from the article header or dateline."
+        optional: true
+      - name: source
+        type: STRING
+        source: pipeline
+        pipeline_field: doc_path

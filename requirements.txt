@@ -1,0 +1,14 @@
+anthropic==0.102.0
+litellm>=1.30        # multi-provider LLM routing (anthropic, ollama, openai direct, etc.)
+ladybug==0.17.1          # KuzuDB successor (kuzu archived Oct 2025); API-compatible
+mcp==1.27.1
+neo4j>=5.0
+openai
+pydantic==2.12.5
+pymupdf4llm==1.27.2.3   # pulls in PyMuPDF (fitz) automatically
+python-dotenv==1.2.2
+PyYAML==6.0.3
+
+# Optional converters (install only what you use):
+# marker-pdf        # ML-based; Apple MPS on M1/M2/M3; pip install marker-pdf
+# llama-cloud>=2.1  # Cloud API; requires LLAMA_CLOUD_API_KEY in .env; pip install 'llama-cloud>=2.1'

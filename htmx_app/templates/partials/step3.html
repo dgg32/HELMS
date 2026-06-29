@@ -1,0 +1,168 @@
+<div x-data="step3()" class="w-full space-y-6">
+  <div class="flex items-center justify-between gap-4">
+    <div>
+      <h2 class="text-xl font-semibold">Step 3 — Write to Graph</h2>
+      <p class="text-sm text-gray-500 mt-1">Apply reviewed triples to the graph database.</p>
+    </div>
+    <div class="flex flex-col items-end gap-1.5 shrink-0">
+      <button @click="startWrite()"
+              :disabled="running"
+              class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg font-medium text-sm transition-colors">
+        <span x-show="!running">▶ Run Write</span>
+        <span x-show="running"><svg viewBox="92 42 496 496" width="18" height="18" class="helms-wheel-spin" style="margin-right:4px"><g transform="translate(340,290)"><circle r="210" fill="none" stroke="#fff" stroke-width="22"/><line x1="0" y1="-210" x2="0" y2="-72" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="0" y1="210" x2="0" y2="72" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="-210" y1="0" x2="-72" y2="0" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="210" y1="0" x2="72" y2="0" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="-148" y1="-148" x2="-51" y2="-51" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="148" y1="148" x2="51" y2="51" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="148" y1="-148" x2="51" y2="-51" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="-148" y1="148" x2="-51" y2="51" stroke="#fff" stroke-width="14" stroke-linecap="round"/><ellipse cx="0" cy="-222" rx="13" ry="26" fill="#fff"/><ellipse cx="0" cy="222" rx="13" ry="26" fill="#fff"/><ellipse cx="-222" cy="0" rx="26" ry="13" fill="#fff"/><ellipse cx="222" cy="0" rx="26" ry="13" fill="#fff"/><ellipse cx="-157" cy="-157" rx="13" ry="26" transform="rotate(-45,-157,-157)" fill="#fff"/><ellipse cx="157" cy="157" rx="13" ry="26" transform="rotate(-45,157,157)" fill="#fff"/><ellipse cx="157" cy="-157" rx="13" ry="26" transform="rotate(45,157,-157)" fill="#fff"/><ellipse cx="-157" cy="157" rx="13" ry="26" transform="rotate(45,-157,157)" fill="#fff"/><circle r="72" fill="rgba(255,255,255,0.2)"/><circle r="56" fill="rgba(255,255,255,0.4)"/></g></svg>Writing…</span>
+      </button>
+      <label class="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
+        <input type="checkbox" x-model="dryRun" class="rounded"/>
+        Dry-run (no DB writes)
+      </label>
+    </div>
+  </div>
+
+  <!-- Step settings -->
+  <form hx-post="/settings" hx-trigger="change" hx-swap="none"
+        class="flex items-center gap-3 py-2 border-y border-gray-100 text-xs text-gray-500">
+    <span class="font-medium text-gray-400 uppercase tracking-wide shrink-0">Settings</span>
+    <label class="flex items-center gap-1.5">
+      Graph backend
+      <select name="backend" class="border border-gray-200 rounded px-2 py-1 text-xs bg-white ml-1">
+        {% for b in ['ladybug','neo4j'] %}
+          <option {% if b == backend %}selected{% endif %}>{{ b }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+
+  <!-- Log panel — always in DOM; hidden until a run starts -->
+  <div x-show="token" x-data="{ logExpanded: false }">
+    <div class="flex items-center gap-2 mb-2">
+      <span class="text-sm font-medium text-gray-700">Output</span>
+      <span x-show="running" class="animate-pulse text-blue-500 text-xs">● live</span>
+      <span x-show="done && ok" class="text-green-600 text-xs font-medium">✓ Done</span>
+      <span x-show="done && !ok" class="text-red-600 text-xs font-medium">✗ Failed</span>
+      <span class="ml-auto flex items-center gap-1.5">
+        <button @click="logExpanded = !logExpanded" class="text-[10px] text-gray-400 hover:text-gray-200 bg-gray-700 hover:bg-gray-600 px-1.5 py-0.5 rounded transition-colors" title="Toggle height" x-text="logExpanded ? '⤡ collapse' : '⤢ expand'"></button>
+        <button @click="navigator.clipboard.writeText(document.getElementById('log-write').innerText).then(()=>helmsToast('Copied','success',1800))" class="text-[10px] text-gray-400 hover:text-gray-200 bg-gray-700 hover:bg-gray-600 px-1.5 py-0.5 rounded transition-colors" title="Copy log">⎘ copy</button>
+      </span>
+    </div>
+    <div class="bg-gray-900 rounded-lg p-3 font-mono text-xs text-gray-300 overflow-y-auto log-panel transition-all"
+         :class="logExpanded ? 'h-[60vh]' : 'h-64'"
+         id="log-write">
+    </div>
+  </div>
+
+  <!-- Graph summary (loaded after successful write, or manually) -->
+  <div class="flex items-center gap-3">
+    <button hx-get="/graph/summary"
+            hx-target="#graph-summary-panel"
+            hx-swap="innerHTML"
+            hx-on:htmx:before-request="document.getElementById('graph-loading').style.display='inline'"
+            hx-on:htmx:after-request="document.getElementById('graph-loading').style.display='none'"
+            class="px-3 py-1.5 border border-gray-300 hover:bg-gray-50 rounded-lg text-xs font-medium transition-colors text-gray-600">
+      ↺ Refresh graph preview
+    </button>
+    <span id="graph-loading" style="display:none" class="text-xs text-gray-400">Loading…</span>
+  </div>
+  <div id="graph-summary-panel"></div>
+</div>
+
+<script>
+function step3() {
+  return {
+    running: false,
+    done: false,
+    ok: null,
+    token: null,
+    dryRun: false,
+
+    async startWrite() {
+      this.running = true;
+      this.done = false;
+      this.ok = null;
+      this.token = '...';
+      const logEl = document.getElementById('log-write');
+      if (logEl) logEl.innerHTML = '';
+      setBadge('write', 'running');
+
+      const form = new FormData();
+      form.append('dry_run', this.dryRun);
+      const res = await fetch('/step/write', { method: 'POST', body: form });
+      if (!res.ok) {
+        const txt = await res.text();
+        helmsToast('Write: ' + txt.substring(0, 200), 'error');
+        this.running = false; setBadge('write', 'error'); return;
+      }
+      const data = await res.json();
+      if (data.error) {
+        helmsToast(data.error, 'error');
+        this.running = false;
+        this.token = null;
+        setBadge('write', 'error');
+        return;
+      }
+      this.token = data.token;
+      this._connectSSE('log-write');
+    },
+
+    _connectSSE(logId) {
+      const logEl = document.getElementById(logId);
+      const es = new EventSource('/stream/' + this.token);
+      es.onmessage = (e) => {
+        if (logEl) {
+          logEl.innerHTML += e.data;
+          logEl.scrollTop = logEl.scrollHeight;
+        }
+      };
+      es.addEventListener('done', () => {
+        es.close();
+        this.onDone();
+      });
+      es.onerror = () => {
+        if (es.readyState === EventSource.CLOSED) {
+          es.close();
+          this.running = false;
+          this.done = true;
+          this.ok = false;
+          document.dispatchEvent(new CustomEvent('helms:step-done', { detail: { step: 'write', ok: false } }));
+        }
+      };
+    },
+
+    init() {
+      document.addEventListener('helms:step-started', (e) => {
+        if (e.detail.step !== 'write') return;
+        this.running = true;
+        this.done = false;
+        this.ok = null;
+        this.token = e.detail.token;
+        const logEl = document.getElementById('log-write');
+        if (logEl) logEl.innerHTML = '';
+        this._connectSSE('log-write');
+      });
+    },
+
+    onDone() {
+      this.running = false;
+      this.done = true;
+      fetch('/runner-status/' + this.token)
+        .then(r => r.json())
+        .then(d => {
+          this.ok = d.ok;
+          setBadge('write', d.ok ? 'done' : 'error');
+          document.dispatchEvent(new CustomEvent('helms:step-done', { detail: { step: 'write', ok: d.ok } }));
+          if (d.ok && !this.dryRun) {
+            htmx.ajax('GET', '/graph/summary', {
+              target: '#graph-summary-panel',
+              swap: 'innerHTML',
+            });
+          }
+        });
+    },
+  };
+}
+</script>
+
+<div class="flex justify-end items-center gap-3 mt-8 pt-4 border-t border-gray-100 text-sm select-none">
+  <button onclick="showStep('step2')" class="text-indigo-600 hover:text-indigo-800 font-medium transition-colors">Prev</button>
+  <span class="text-gray-300">|</span>
+  <span class="text-gray-300 cursor-not-allowed">Next</span>
+</div>

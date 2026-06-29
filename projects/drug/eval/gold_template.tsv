@@ -1,0 +1,18 @@
+rel_type	from_display	to_display	doc_name	notes
+MAY_TREAT	nirsevimab-alip	Respiratory Syncytial Virus Infections	beyfortus label	1 INDICATIONS AND USAGE
+HAS_TRADENAME	nirsevimab-alip	Beyfortus	beyfortus label	package header
+HAS_MECHANISM_OF_ACTION	nirsevimab-alip	Fusion Protein Inhibitors	beyfortus label	package header
+HAS_ADVERSE_EFFECT	nirsevimab-alip	Skin rash	beyfortus label	Table 2
+HAS_ADVERSE_EFFECT	nirsevimab-alip	Injection Site Reaction	beyfortus label	Table 2
+HAS_ADVERSE_EFFECT	atorvastatin	Hyperglycemia	lipitor label	6.1 Clinical Trials Experience
+HAS_ADVERSE_EFFECT	atorvastatin	Transaminases increased	lipitor label	6.1 Clinical Trials Experience
+HAS_ADVERSE_EFFECT	atorvastatin	Liver function tests abnormal	lipitor label	6.1 Clinical Trials Experience
+HAS_ADVERSE_EFFECT	atorvastatin	Serum alkaline phosphatase raised	lipitor label	6.1 Clinical Trials Experience
+HAS_ADVERSE_EFFECT	atorvastatin	Creatine Phosphokinase Increased	lipitor label	6.1 Clinical Trials Experience
+HAS_ADVERSE_EFFECT	atorvastatin	Muscle Fatigue	lipitor label	6.1 Clinical Trials Experience
+HAS_ADVERSE_EFFECT	atorvastatin	Neck Pain	lipitor label	6.1 Clinical Trials Experience
+HAS_ADVERSE_EFFECT	atorvastatin	Joint swelling	lipitor label	6.1 Clinical Trials Experience
+HAS_ADVERSE_EFFECT	atorvastatin	Dyspepsia	lipitor label	6.1 Clinical Trials Experience
+HAS_ADVERSE_EFFECT	atorvastatin	Nausea	lipitor label	6.1 Clinical Trials Experience
+HAS_ADVERSE_EFFECT	atorvastatin	Spasm	lipitor label	6.1 Clinical Trials Experience
+HAS_ADVERSE_EFFECT	atorvastatin	Sleeplessness	lipitor label	6.1 Clinical Trials Experience

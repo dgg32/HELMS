@@ -1,0 +1,31 @@
+# Credentials
+.env
+.env.yaml
+# Kuzu databases
+*.db
+*.wal
+
+# LlamaIndex vector store (local computed artifact)
+vector_store/
+
+# HELMS runtime state (persisted across server restarts, machine-local)
+htmx_app/.helms_state.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# macOS
+.DS_Store
+.cache/
+autoresearch/
+
+# Pipeline run artifacts (db, vector store, converted md, review json all live here)
+projects/*/runs/
+*.db-shm
+*.db-wal
+autoresearch/*
+.kilo/*
+*.jsonl

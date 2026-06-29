@@ -1,0 +1,3 @@
+# Dev/test dependencies (on top of requirements.txt).
+# Needed to run the test suite documented in AGENTS.md:  python -m pytest -q
+pytest>=8.0

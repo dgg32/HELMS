@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>HELMS</title>
+  <link rel="icon" type="image/svg+xml" href="/static/helms_wheel_only.svg"/>
+
+  <!-- Tailwind CSS (CDN — no build step) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- HTMX + SSE extension -->
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/sse.js"></script>
+
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <!-- Markdown renderer + sanitizer -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+
+  <style>
+    [x-cloak] { display: none !important; }
+    .htmx-indicator { opacity: 0; transition: opacity 200ms ease-in; }
+    .htmx-request .htmx-indicator { opacity: 1; }
+    .htmx-request.htmx-indicator { opacity: 1; }
+
+    /* subtle scrollbar for log panel */
+    .log-panel::-webkit-scrollbar { width: 6px; }
+    .log-panel::-webkit-scrollbar-track { background: #1f2937; }
+    .log-panel::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+
+    /* markdown prose rendering */
+    .prose h1, .prose h2, .prose h3, .prose h4 { font-weight: 600; margin: 0.75em 0 0.25em; }
+    .prose h1 { font-size: 1.4em; }
+    .prose h2 { font-size: 1.2em; }
+    .prose h3 { font-size: 1.05em; }
+    .prose p  { margin: 0.5em 0; line-height: 1.6; }
+    .prose ul, .prose ol { margin: 0.4em 0 0.4em 1.25em; }
+    .prose ul { list-style: disc; }
+    .prose ol { list-style: decimal; }
+    .prose li { margin: 0.2em 0; }
+    .prose code { font-family: monospace; background: #f3f4f6; padding: 0.1em 0.3em; border-radius: 3px; font-size: 0.85em; }
+    .prose pre  { background: #1f2937; color: #d1d5db; padding: 0.75em 1em; border-radius: 6px; overflow-x: auto; margin: 0.5em 0; }
+    .prose pre code { background: none; padding: 0; color: inherit; }
+    .prose blockquote { border-left: 3px solid #d1d5db; padding-left: 0.75em; color: #6b7280; margin: 0.5em 0; }
+    .prose a { color: #2563eb; text-decoration: underline; }
+    .prose strong { font-weight: 600; }
+    .prose em { font-style: italic; }
+    .prose hr { border: none; border-top: 1px solid #e5e7eb; margin: 0.75em 0; }
+    .prose table { border-collapse: collapse; width: 100%; margin: 0.5em 0; }
+    .prose th, .prose td { border: 1px solid #e5e7eb; padding: 0.35em 0.6em; text-align: left; }
+    .prose th { background: #f9fafb; font-weight: 600; }
+
+    /* triple card color badges */
+    .badge-green { @apply bg-green-100 text-green-800 text-xs px-1.5 py-0.5 rounded; }
+    .badge-yellow { @apply bg-yellow-100 text-yellow-800 text-xs px-1.5 py-0.5 rounded; }
+    .badge-red { @apply bg-red-100 text-red-800 text-xs px-1.5 py-0.5 rounded; }
+
+    /* toast notifications */
+    #toast-container { position:fixed; top:1.25rem; right:1.25rem; z-index:9999; display:flex; flex-direction:column; gap:0.5rem; pointer-events:none; }
+    .helms-toast { pointer-events:auto; min-width:220px; max-width:360px; padding:0.55rem 0.9rem; border-radius:8px; font-size:0.78rem; font-weight:500; display:flex; align-items:flex-start; gap:0.5rem; box-shadow:0 4px 14px rgba(0,0,0,.14); animation:toast-in .18s ease-out; cursor:pointer; }
+    .helms-toast.fade-out { animation:toast-out .25s ease-in forwards; }
+    .helms-toast-success { background:#dcfce7; color:#166534; border:1px solid #86efac; }
+    .helms-toast-error   { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
+    .helms-toast-info    { background:#eff6ff; color:#1e40af; border:1px solid #93c5fd; }
+    .helms-toast-warn    { background:#fefce8; color:#854d0e; border:1px solid #fde047; }
+    .helms-toast-running { background:#0f2744; color:#e2e8f0; border:1px solid #1a3a5c; align-items:center; }
+    @keyframes toast-in   { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:none} }
+    @keyframes toast-out  { from{opacity:1} to{opacity:0;transform:translateY(-4px)} }
+    @keyframes helms-spin { from{transform:translateY(-0.5px) rotate(0deg)} to{transform:translateY(-0.5px) rotate(360deg)} }
+    .helms-wheel-spin { animation:helms-spin 1.4s linear infinite; display:inline-block; vertical-align:middle; }
+  </style>
+
+  <!-- Toast container + global helper -->
+  <div id="toast-container" aria-live="polite"></div>
+  <script>
+    // Tab-title job indicator (Slack-style): "* HELMS" while a step runs,
+    // "! HELMS" when one finishes and you are on another tab. Cleared on return.
+    (function () {
+      var base = document.title, running = 0;
+      function render() {
+        document.title = running > 0 ? "* " + base : base;
+      }
+      document.addEventListener('helms:step-started', function () { running++; render(); });
+      document.addEventListener('helms:step-done', function () {
+        if (running > 0) running--;
+        if (running === 0 && document.hidden) document.title = "! " + base;
+        else render();
+      });
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && running === 0) document.title = base;
+      });
+      window.addEventListener('focus', function () {
+        if (running === 0) document.title = base;
+      });
+    })();
+
+    function helmsToast(msg, type, duration) {
+      type = type || 'info';
+      if (duration == null) duration = 4000;
+      var container = document.getElementById('toast-container');
+      if (!container) return;
+      var el = document.createElement('div');
+      el.className = 'helms-toast helms-toast-' + type;
+
+      var iconEl;
+      if (type === 'running') {
+        // Spinning helm wheel SVG — clockwise, dark navy palette
+        var ns = 'http://www.w3.org/2000/svg';
+        var svg = document.createElementNS(ns, 'svg');
+        svg.setAttribute('viewBox', '92 42 496 496');
+        svg.setAttribute('width', '28');
+        svg.setAttribute('height', '28');
+        svg.classList.add('helms-wheel-spin');
+        var g = document.createElementNS(ns, 'g');
+        g.setAttribute('transform', 'translate(340,290)');
+        g.innerHTML =
+          '<circle r="210" fill="none" stroke="#7eb8d4" stroke-width="22"/>' +
+          '<line x1="0" y1="-210" x2="0" y2="-72" stroke="#7eb8d4" stroke-width="14" stroke-linecap="round"/>' +
+          '<line x1="0" y1="210" x2="0" y2="72" stroke="#7eb8d4" stroke-width="14" stroke-linecap="round"/>' +
+          '<line x1="-210" y1="0" x2="-72" y2="0" stroke="#7eb8d4" stroke-width="14" stroke-linecap="round"/>' +
+          '<line x1="210" y1="0" x2="72" y2="0" stroke="#7eb8d4" stroke-width="14" stroke-linecap="round"/>' +
+          '<line x1="-148" y1="-148" x2="-51" y2="-51" stroke="#7eb8d4" stroke-width="14" stroke-linecap="round"/>' +
+          '<line x1="148" y1="148" x2="51" y2="51" stroke="#7eb8d4" stroke-width="14" stroke-linecap="round"/>' +
+          '<line x1="148" y1="-148" x2="51" y2="-51" stroke="#7eb8d4" stroke-width="14" stroke-linecap="round"/>' +
+          '<line x1="-148" y1="148" x2="-51" y2="51" stroke="#7eb8d4" stroke-width="14" stroke-linecap="round"/>' +
+          '<ellipse cx="0" cy="-222" rx="13" ry="26" fill="#7eb8d4"/>' +
+          '<ellipse cx="0" cy="222" rx="13" ry="26" fill="#7eb8d4"/>' +
+          '<ellipse cx="-222" cy="0" rx="26" ry="13" fill="#7eb8d4"/>' +
+          '<ellipse cx="222" cy="0" rx="26" ry="13" fill="#7eb8d4"/>' +
+          '<ellipse cx="-157" cy="-157" rx="13" ry="26" transform="rotate(-45,-157,-157)" fill="#7eb8d4"/>' +
+          '<ellipse cx="157" cy="157" rx="13" ry="26" transform="rotate(-45,157,157)" fill="#7eb8d4"/>' +
+          '<ellipse cx="157" cy="-157" rx="13" ry="26" transform="rotate(45,157,-157)" fill="#7eb8d4"/>' +
+          '<ellipse cx="-157" cy="157" rx="13" ry="26" transform="rotate(45,-157,157)" fill="#7eb8d4"/>' +
+          '<circle r="72" fill="#1a3a5c"/>' +
+          '<circle r="56" fill="#0e9e8e"/>' +
+          '<text x="0" y="0" fill="#fff" font-family="Georgia,serif" font-size="72" font-weight="700" text-anchor="middle" dominant-baseline="central">H</text>';
+        svg.appendChild(g);
+        iconEl = svg;
+      } else {
+        var icons = { success:'✓', error:'✗', warn:'⚠', info:'ℹ' };
+        iconEl = document.createElement('span');
+        iconEl.style.cssText = 'flex-shrink:0;font-weight:700';
+        iconEl.textContent = (icons[type] || 'ℹ');
+      }
+
+      var msgEl = document.createElement('span');
+      msgEl.textContent = msg;
+      el.appendChild(iconEl);
+      el.appendChild(msgEl);
+      container.appendChild(el);
+      function remove() { el.classList.add('fade-out'); setTimeout(function(){ el.remove(); }, 260); }
+      if (duration !== 0) {
+        var timer = setTimeout(remove, duration);
+        el.addEventListener('click', function(){ clearTimeout(timer); remove(); });
+      } else {
+        el.addEventListener('click', remove);
+      }
+      el.dismiss = remove;
+      return el;
+    }
+  </script>
+
+  <script>
+    // Global helpers shared across Alpine components
+    function logPanel(token, stepLabel) {
+      return {
+        running: true,
+        done: false,
+        ok: null,
+        lines: '',
+
+        init() {
+          // HTMX drives the SSE swap into #log-{token}.
+          // We just listen for the custom "done" event fired by SSE extension.
+          this.$el.addEventListener('sse:done', () => {
+            this.running = false;
+            this.done = true;
+          });
+        },
+      };
+    }
+  </script>
+</head>
+<body class="h-full bg-gray-50 text-gray-900 font-sans">
+
+<div class="flex h-screen overflow-hidden">
+
+  <!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
+  <aside class="w-72 bg-white flex flex-col overflow-y-auto shrink-0">
+    <div class="p-4">
+      <h1 class="text-lg font-semibold text-gray-800 flex items-center gap-2">
+        <img src="/static/helms_wheel_only.svg" alt="HELMS" class="w-8 h-8 shrink-0"/>
+        HELMS
+      </h1>
+      <p class="text-xs text-gray-500 mt-0.5">Human, LLM, and Safeguards</p>
+    </div>
+
+    {% block sidebar %}{% endblock %}
+  </aside>
+
+  <!-- ── Main content ──────────────────────────────────────────────────────── -->
+  <main class="flex-1 overflow-y-auto p-6 bg-white">
+    {% block content %}{% endblock %}
+  </main>
+
+</div>
+</body>
+</html>

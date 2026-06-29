@@ -1,0 +1,40 @@
+instructions: |
+  Extract ALL supplier–customer relationships described in the document.
+  The supply chain flows in BOTH directions: component/service suppliers provide to
+  a focal company (e.g. TSMC → NVIDIA), and that focal company may in turn supply
+  finished products to its customers (e.g. NVIDIA → AWS).
+  Capture every (supplier_name, customer_name) pair mentioned, regardless of which
+  company is the "primary" subject of the article.
+  Do NOT extract relationships where a company is mentioned only in passing as a
+  comparator or background reference.
+
+# Per-PDF page filters. Key = PDF filename without .pdf extension.
+# PDFs not listed here are converted in full (no filtering).
+#
+# INCLUDE — only these pages are converted:
+#   include: [1-14]           # pages 1 through 14
+#   include: [1-5, 8, 12-15] # pages 1-5, page 8, pages 12-15 (mix of ranges and singles)
+#   include: [3]              # single page (brackets still required — bare "3" is not a list)
+#
+# EXCLUDE — all pages EXCEPT these:
+#   exclude: [1]              # skip cover page; convert everything else
+#   exclude: [15-16]          # skip last two pages
+#   exclude: [1, 15-16]       # skip cover and last two pages
+#
+# When are [] needed?
+#   Always. The value must be a YAML sequence. [] is the compact inline form.
+#   The block form works too but is more verbose:
+#     include:
+#       - 1-14
+#       - 16
+#   Use [] to keep page filters readable on one line.
+#   Do NOT write include: 1-14 (no brackets) — parsed as a plain string, not a list, and will error.
+
+pages:
+  Micron in High-Volume Production of HBM4 Designed for NVIDIA Vera Rubin, PCIe Gen6 SSD and SOCAMM2:
+    # Pages 1-10 cover highlights, dosage, safety, and pharmacokinetics.
+    include: [1]
+  Micron Innovates From the Data Center to the Edge With NVIDIA:
+    include: [1-2]
+  nvidia-gb200-supply-chain-the-global-ecosystem-explained:
+    include: [2-6]

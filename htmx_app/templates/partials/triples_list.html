@@ -1,0 +1,410 @@
+{% macro agent_retry_btn(rel_type) %}
+<button @click="!$store.helms.agentRunning && document.dispatchEvent(new CustomEvent('helms:agent-retry-rel',{detail:{relType:'{{ rel_type }}'}}))"
+        :disabled="$store.helms.agentRunning"
+        :class="$store.helms.agentRunning ? 'opacity-50 cursor-not-allowed' : 'hover:bg-indigo-400 active:bg-indigo-600'"
+        class="text-xs font-semibold text-white bg-indigo-500 px-2.5 py-1 rounded transition-colors"
+        title="Smart retry with agent">🥷🏻 Smart Retry</button>
+{% endmacro %}
+
+<span id="review-raw-hash" data-hash="{{ raw_hash or '' }}" class="hidden"></span>
+
+{% if not triples and not node_labels %}
+<p class="text-sm text-gray-400 italic">No triples in this file.</p>
+{% else %}
+
+<!-- Datalists for Add Triple form autocomplete -->
+<datalist id="node-labels-list">
+  {% for lbl in node_labels %}
+  <option value="{{ lbl }}">
+  {% endfor %}
+</datalist>
+<datalist id="rel-types-list">
+  {% for rt in rel_types %}
+  <option value="{{ rt }}">
+  {% endfor %}
+</datalist>
+
+{# Compute initial active counts at render time — no timing dependency #}
+{% set ns = namespace(ag=0, ay=0, ar=0) %}
+{% for triple in triples %}
+  {% set ev = events.get(triple._id, {}) %}
+  {% if ev.get('action') != 'REJECT' %}
+    {% if triple.triple_color == 'yellow' %}{% set ns.ay = ns.ay + 1 %}
+    {% elif triple.triple_color == 'red' %}{% set ns.ar = ns.ar + 1 %}
+    {% else %}{% set ns.ag = ns.ag + 1 %}
+    {% endif %}
+  {% endif %}
+{% endfor %}
+
+<div x-data='triplesList({{ ns.ag }}, {{ ns.ay }}, {{ ns.ar }}, {{ rel_type_map | tojson | replace("'", "&#39;") }}, {{ node_pk_map | tojson | replace("'", "&#39;") }})' class="space-y-2">
+  <!-- Faceted filter bar: color toggles → search → rel type → clear -->
+  <div class="flex flex-wrap items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
+    <!-- Color toggles — high-contrast active/inactive -->
+    <div class="flex items-center border border-gray-200 rounded-lg overflow-hidden shrink-0">
+      <button @click="toggleColor('green')"
+              :class="filterColors.green
+                ? 'bg-green-100 opacity-100'
+                : 'bg-gray-100 opacity-25'"
+              class="px-2.5 py-1.5 text-sm transition-all duration-150 border-r border-gray-200"
+              title="Accurate (green)">🟢</button>
+      <button @click="toggleColor('yellow')"
+              :class="filterColors.yellow
+                ? 'bg-yellow-100 opacity-100'
+                : 'bg-gray-100 opacity-25'"
+              class="px-2.5 py-1.5 text-sm transition-all duration-150 border-r border-gray-200"
+              title="Uncertain (yellow)">🟡</button>
+      <button @click="toggleColor('red')"
+              :class="filterColors.red
+                ? 'bg-red-100 opacity-100'
+                : 'bg-gray-100 opacity-25'"
+              class="px-2.5 py-1.5 text-sm transition-all duration-150"
+              title="Hallucination (red)">🔴</button>
+    </div>
+
+    <!-- Text search -->
+    <input type="text" x-model="searchText"
+           placeholder="🔎 Search entities…"
+           class="flex-1 min-w-[120px] text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"/>
+
+    <!-- Rel type filter -->
+    <select x-model="filterRelType"
+            class="flex-1 min-w-[120px] text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400">
+      <option value="">All rel types</option>
+      {% for rt in rel_types %}
+      <option value="{{ rt }}">{{ rt }}</option>
+      {% endfor %}
+    </select>
+
+    <!-- Show rejected toggle -->
+    <label class="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer whitespace-nowrap shrink-0">
+      <input type="checkbox" :checked="$store.helms.showRejected"
+             @change="$store.helms.showRejected = $event.target.checked" class="rounded"/>
+      Show Rejected
+    </label>
+
+    <!-- Clear — always in flow; invisible when no filter active to prevent layout shift -->
+    <button :class="hasActiveFilter ? 'visible' : 'invisible'"
+            @click="clearFilters()"
+            class="text-xs text-gray-400 hover:text-gray-700 px-1.5 transition-colors shrink-0"
+            title="Clear all filters">✕ clear</button>
+  </div>
+
+  <!-- Add Triple form -->
+  <div x-show="$store.helms.showAddForm" x-cloak
+       class="border-2 border-dashed border-blue-200 rounded-lg p-4 bg-blue-50 space-y-4">
+    <p class="text-xs font-semibold text-gray-600 uppercase tracking-wide">New Triple</p>
+
+    <!-- Relationship type selector -->
+    <div class="space-y-1">
+      <label class="text-xs text-gray-500 font-medium">Relationship type</label>
+      <select x-model="newRelType" @change="onRelTypeChange()"
+              class="w-full border border-gray-200 rounded px-2 py-1.5 text-xs font-mono text-blue-700 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400">
+        <option value="">— select —</option>
+        {% for rt in rel_types %}
+        <option value="{{ rt }}">{{ rt }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Node + rel prop fields (shown once a rel type is selected) -->
+    <template x-if="newRelType && relTypeMap[newRelType]">
+      <div class="space-y-4">
+
+        <!-- From | To columns -->
+        <div class="grid grid-cols-2 gap-4">
+          <!-- From node -->
+          <div class="space-y-2">
+            <p class="text-xs font-semibold text-gray-700">From node</p>
+            <div class="space-y-0.5">
+              <p class="text-xs text-gray-400">Label</p>
+              <p class="px-2 py-1 text-xs font-mono bg-gray-100 rounded text-gray-700" x-text="relTypeMap[newRelType].from_label"></p>
+            </div>
+            <div class="space-y-0.5">
+              <p class="text-xs text-gray-400">PK field</p>
+              <p class="px-2 py-1 text-xs font-mono bg-gray-100 rounded text-gray-500" x-text="relTypeMap[newRelType].from_pk"></p>
+            </div>
+            <template x-for="key in (relTypeMap[newRelType].from_keys || [])" :key="key">
+              <div class="space-y-0.5">
+                <label class="text-xs text-gray-500 font-medium" x-text="key"></label>
+                <input type="text" x-model="newFromProps[key]"
+                       class="w-full border border-gray-200 rounded px-2 py-1 text-xs font-mono bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"/>
+              </div>
+            </template>
+          </div>
+          <!-- To node -->
+          <div class="space-y-2">
+            <p class="text-xs font-semibold text-gray-700">To node</p>
+            <div class="space-y-0.5">
+              <p class="text-xs text-gray-400">Label</p>
+              <p class="px-2 py-1 text-xs font-mono bg-gray-100 rounded text-gray-700" x-text="relTypeMap[newRelType].to_label"></p>
+            </div>
+            <div class="space-y-0.5">
+              <p class="text-xs text-gray-400">PK field</p>
+              <p class="px-2 py-1 text-xs font-mono bg-gray-100 rounded text-gray-500" x-text="relTypeMap[newRelType].to_pk"></p>
+            </div>
+            <template x-for="key in (relTypeMap[newRelType].to_keys || [])" :key="key">
+              <div class="space-y-0.5">
+                <label class="text-xs text-gray-500 font-medium" x-text="key"></label>
+                <input type="text" x-model="newToProps[key]"
+                       class="w-full border border-gray-200 rounded px-2 py-1 text-xs font-mono bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"/>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Relationship props -->
+        <template x-if="(relTypeMap[newRelType].rel_prop_keys || []).length > 0">
+          <div class="space-y-2">
+            <p class="text-xs font-semibold text-gray-700">Relationship props</p>
+            <div class="grid grid-cols-2 gap-4">
+              <template x-for="key in (relTypeMap[newRelType].rel_prop_keys || [])" :key="key">
+                <div class="space-y-0.5">
+                  <label class="text-xs text-gray-500 font-medium" x-text="key"></label>
+                  <input type="text" x-model="newRelProps[key]"
+                         class="w-full border border-gray-200 rounded px-2 py-1 text-xs font-mono bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"/>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+
+      </div>
+    </template>
+
+    <div class="flex gap-2 justify-end pt-1">
+      <button @click="$store.helms.showAddForm = false; _resetAddForm()"
+              class="px-3 py-1.5 text-xs border border-gray-300 rounded hover:bg-gray-50 transition-colors">
+        Cancel
+      </button>
+      <button @click="addTriple()"
+              :disabled="!canAddTriple"
+              class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium">
+        + Add triple
+      </button>
+    </div>
+  </div>
+
+  <!-- Existing triples grouped by relationship type -->
+  {% set ns_seen = namespace(rel_types=[]) %}
+  {% for rel_type, group_triples in triples | groupby('rel_type') %}
+  {% set group_list = group_triples | list %}
+  {% set ns_seen.rel_types = ns_seen.rel_types + [rel_type] %}
+  <div class="border border-gray-200 rounded-lg overflow-hidden"
+       x-show="!filterRelType || filterRelType === '{{ rel_type }}'"
+       x-cloak>
+    <!-- Group header -->
+    <div class="bg-gray-800 px-3 py-1.5 flex items-center gap-2">
+      <span class="text-xs font-mono text-green-300">{{ rel_type or '(unknown)' }}</span>
+      <span class="text-xs text-gray-400 ml-auto">{{ group_list | length }}</span>
+      {{ agent_retry_btn(rel_type) }}
+    </div>
+    <!-- Cards inside group -->
+    {% for triple in group_list %}
+    {% set ev = events.get(triple._id, {}) %}
+    {% set is_rejected = ev.get('action') == 'REJECT' %}
+    <div x-data='tripleCard({{ triple | tojson | replace("&", "&amp;") | replace("'", "&#39;") }}, {{ "true" if is_rejected else "false" }})'
+         x-show="(!rejected || $store.helms.showRejected) && matchesFilter(fromName, toName, tripleColor, relType)"
+         class="border-b border-gray-100 last:border-b-0 transition-all"
+         :class="rejected ? 'bg-red-50 opacity-50' : 'bg-white'"
+         data-triple-id="{{ triple._id or '' }}"
+         data-triple-color="{{ triple.triple_color or 'green' }}"
+         data-triple-rejected="{{ '1' if is_rejected else '0' }}"
+         data-triple-dirty="0"
+         data-triple-from='{{ triple.from_props | tojson | replace("&", "&amp;") | replace("'", "&#39;") | replace('"', '&quot;') }}'
+         data-triple-to='{{ triple.to_props | tojson | replace("&", "&amp;") | replace("'", "&#39;") | replace('"', '&quot;') }}'
+         data-triple-rel='{{ triple.rel_props | tojson | replace("&", "&amp;") | replace("'", "&#39;") | replace('"', '&quot;') }}'
+         data-triple-quote='{{ (triple.supporting_quote or "") | replace("&", "&amp;") | replace("'", "&#39;") | replace('"', "&quot;") }}'>
+
+      <!-- Header row -->
+      <div @click="expanded = !expanded"
+           class="flex items-center gap-2 px-3 py-2.5 cursor-pointer hover:bg-gray-50 select-none">
+
+        <!-- Color badge — click to cycle green→yellow→red -->
+        <span @click.stop="cycleColor()"
+              :class="{
+                'bg-green-500':  tripleColor === 'green',
+                'bg-yellow-400': tripleColor === 'yellow',
+                'bg-red-500':    tripleColor === 'red',
+              }"
+              class="w-3.5 h-3.5 rounded-full shrink-0 cursor-pointer hover:ring-2 hover:ring-white/60 transition-all"
+              title="Click to override quality color"></span>
+
+        <span class="text-sm text-gray-800 truncate flex-1"
+              :class="{ 'line-through text-gray-400': rejected }">
+          <span x-text="fromName"></span>
+          <span class="text-gray-400 mx-1">→</span>
+          <span x-text="toName"></span>
+        </span>
+
+        {% if triple.evidence_level %}
+          <span class="text-xs text-gray-400 shrink-0">{{ triple.evidence_level }}</span>
+        {% endif %}
+
+        <button @click.stop="toggleReject()"
+                class="ml-1 shrink-0 text-sm hover:scale-110 transition-transform"
+                :title="rejected ? 'Restore triple' : 'Reject triple'">
+          <span x-text="rejected ? '↩' : '🗑'"></span>
+        </button>
+        <span class="text-gray-400 text-xs shrink-0" x-text="expanded ? '▲' : '▼'"></span>
+      </div>
+
+      <!-- Expanded body -->
+      <div x-show="expanded" x-cloak class="border-t border-gray-100 px-3 py-3 space-y-4">
+        <div class="flex items-start gap-2">
+          <div class="flex-1 border-l-2 border-gray-300 pl-3">
+            <label class="block text-[10px] uppercase tracking-wide text-gray-400 mb-0.5">Supporting quote</label>
+            <textarea x-model="quote" @input="markDirty()" rows="2"
+                      placeholder="Quote must appear verbatim in the source document, otherwise it is not saved."
+                      class="w-full text-xs italic text-gray-600 bg-transparent rounded px-1 py-0.5 resize-y focus:outline-none focus:ring-1 focus:ring-blue-400 focus:not-italic"></textarea>
+          </div>
+          <button @click.stop="window.helmsShowEvidence(tripleId)"
+                  class="shrink-0 mt-4 text-xs text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap"
+                  title="Open the source document at the evidence span">📄 Find in doc</button>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <div class="flex items-center gap-1.5 mb-1.5">
+            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">From</span>
+            <span class="text-xs text-gray-400">({{ triple.from_label }})</span>
+            {% if triple.from_color == 'green' %}🟢{% elif triple.from_color == 'yellow' %}🟡{% elif triple.from_color == 'red' %}🔴{% endif %}
+          </div>
+          {% for key, val in triple.from_props.items() %}
+          <div class="flex items-start gap-2 text-xs mb-1">
+            <span class="w-28 text-gray-500 shrink-0 font-mono">{{ key }}</span>
+            <input type="text" x-model="fromProps['{{ key }}']" @input="markDirty()"
+                   class="flex-1 border border-gray-200 rounded px-1.5 py-0.5 font-mono text-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                   value="{{ val }}"/>
+          </div>
+          {% endfor %}
+          {% if triple.from_term %}
+          <div class="flex items-start gap-2 text-xs mb-1" title="The exact term the extractor read from the document — copy it to find the support in the doc.">
+            <span class="w-28 text-gray-400 shrink-0 font-mono italic">raw term</span>
+            <span class="flex-1 font-mono text-gray-500 italic select-all break-words">{{ triple.from_term }}</span>
+          </div>
+          {% endif %}
+        </div>
+
+        <div>
+          <div class="flex items-center gap-1.5 mb-1.5">
+            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">To</span>
+            <span class="text-xs text-gray-400">({{ triple.to_label }})</span>
+            {% if triple.to_color == 'green' %}🟢{% elif triple.to_color == 'yellow' %}🟡{% elif triple.to_color == 'red' %}🔴{% endif %}
+          </div>
+          {% for key, val in triple.to_props.items() %}
+          <div class="flex items-start gap-2 text-xs mb-1">
+            <span class="w-28 text-gray-500 shrink-0 font-mono">{{ key }}</span>
+            <input type="text" x-model="toProps['{{ key }}']" @input="markDirty()"
+                   class="flex-1 border border-gray-200 rounded px-1.5 py-0.5 font-mono text-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                   value="{{ val }}"/>
+          </div>
+          {% endfor %}
+          {% if triple.to_term %}
+          <div class="flex items-start gap-2 text-xs mb-1" title="The exact term the extractor read from the document — copy it to find the support in the doc.">
+            <span class="w-28 text-gray-400 shrink-0 font-mono italic">raw term</span>
+            <span class="flex-1 font-mono text-gray-500 italic select-all break-words">{{ triple.to_term }}</span>
+          </div>
+          {% endif %}
+        </div>
+        </div>
+
+        {% if triple.rel_props %}
+        <div>
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Relationship props</div>
+          {% for key, val in triple.rel_props.items() %}
+          {% if key not in ('source', 'source_doc') %}
+          <div class="flex items-start gap-2 text-xs mb-1">
+            <span class="w-28 text-gray-500 shrink-0 font-mono">{{ key }}</span>
+            <input type="text" x-model="relProps['{{ key }}']" @input="markDirty()"
+                   class="flex-1 border border-gray-200 rounded px-1.5 py-0.5 font-mono text-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                   value="{{ val }}"/>
+          </div>
+          {% endif %}
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if triple.ai_opinion %}
+        <div class="text-xs text-gray-500 bg-gray-50 rounded p-2">
+          🤖 <span class="italic">{{ triple.ai_opinion }}</span>
+        </div>
+        {% endif %}
+      </div><!-- /expanded -->
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+
+  <!-- Empty groups for rel_types with no triples yet — still show Agent retry button -->
+  {% for rt in rel_types %}
+  {% if rt not in ns_seen.rel_types %}
+  <div class="border border-gray-200 rounded-lg overflow-hidden"
+       x-show="!filterRelType || filterRelType === '{{ rt }}'"
+       x-cloak>
+    <div class="bg-gray-800 px-3 py-1.5 flex items-center gap-2">
+      <span class="text-xs font-mono text-green-300">{{ rt }}</span>
+      <span class="text-xs text-gray-500 italic ml-auto">no triples</span>
+      {{ agent_retry_btn(rt) }}
+    </div>
+  </div>
+  {% endif %}
+  {% endfor %}
+
+  <!-- Added triples (new, not yet saved to disk) -->
+  <template x-if="addedTriples.length > 0">
+    <div class="border-2 border-blue-200 rounded-lg overflow-hidden">
+      <div class="bg-blue-700 px-3 py-1.5 flex items-center gap-2">
+        <span class="text-xs font-mono text-blue-100">NEWLY ADDED</span>
+        <span class="text-xs text-blue-300 ml-auto" x-text="addedTriples.length"></span>
+      </div>
+      <template x-for="t in addedTriples" :key="t._id">
+        <div class="border-b border-blue-100 last:border-b-0 bg-blue-50 px-3 py-2.5 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-green-500 shrink-0"></span>
+          <span class="text-xs font-mono text-blue-700 shrink-0" x-text="t.rel_type"></span>
+          <span class="text-sm text-gray-800 flex-1">
+            <span x-text="t.from_props[t.from_pk || 'name']"></span>
+            <span class="text-gray-400 mx-1">→</span>
+            <span x-text="t.to_props[t.to_pk || 'name']"></span>
+          </span>
+          <span class="text-xs bg-blue-200 text-blue-800 px-1.5 py-0.5 rounded font-medium">NEW</span>
+          <button @click="removeAdded(t._id)" class="text-sm hover:scale-110 transition-transform" title="Remove">🗑</button>
+        </div>
+      </template>
+    </div>
+  </template>
+
+</div>
+
+<script>
+// Registry: step2 calls this to collect all current triple states before saving.
+// Redefined on each swap so it always scans the current DOM.
+window._helmsTriples = function() {
+  const result = [];
+  function safeParse(raw, tripleId, field) {
+    try {
+      return JSON.parse(raw || '{}');
+    } catch (e) {
+      console.error(`[helms] failed to parse data-triple-${field} for ${tripleId}:`, e, raw);
+      return {};
+    }
+  }
+  document.querySelectorAll('[data-triple-id]').forEach(el => {
+    const tid = el.dataset.tripleId;
+    result.push({
+      _id:          tid,
+      action:       el.dataset.tripleRejected === '1' ? 'REJECT'
+                  : el.dataset.tripleDirty    === '1' ? 'OVERRIDE'
+                  : 'ACCEPT',
+      triple_color: el.dataset.tripleColor || 'green',
+      from_props:   safeParse(el.dataset.tripleFrom, tid, 'from'),
+      to_props:     safeParse(el.dataset.tripleTo,   tid, 'to'),
+      rel_props:    safeParse(el.dataset.tripleRel,  tid, 'rel'),
+      supporting_quote: el.dataset.tripleQuote || '',
+    });
+  });
+  return result;
+};
+// triplesList() and tripleCard() are defined in step2.html so Alpine can call
+// them as soon as HTMX swaps this content into the DOM.
+</script>
+{% endif %}

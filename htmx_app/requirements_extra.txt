@@ -1,0 +1,10 @@
+# Additional deps for the HTMX experimental UI (on top of ../requirements.txt)
+fastapi>=0.111
+# starlette floor pinned explicitly: main.py uses the modern request-first
+# TemplateResponse(request, name, context) signature and relies on Jinja2Templates
+# auto-enabling autoescape internally. Both require a recent starlette; the old
+# TemplateResponse(name, context) call and the autoescape= kwarg were removed.
+starlette>=0.40
+uvicorn[standard]>=0.29
+jinja2>=3.1
+python-multipart>=0.0.9

@@ -1,0 +1,39 @@
+instructions: |
+  Extract triples for the PRIMARY substance described in the document (the drug the label is about).
+  Do NOT extract triples for comparator drugs, placebo, or other substances mentioned only in passing
+  (e.g. as comparators in clinical trials, exclusion criteria, or background references).
+  If a sentence compares the primary drug to another (e.g. "Drug A outperformed Drug B"), extract
+  only the primary drug's side of that relationship — ignore the comparator.
+
+# Per-PDF page filters. Key = PDF filename without .pdf extension.
+# PDFs not listed here are converted in full (no filtering).
+#
+# INCLUDE — only these pages are converted:
+#   include: [1-14]           # pages 1 through 14
+#   include: [1-5, 8, 12-15] # pages 1-5, page 8, pages 12-15 (mix of ranges and singles)
+#   include: [3]              # single page (brackets still required — bare "3" is not a list)
+#
+# EXCLUDE — all pages EXCEPT these:
+#   exclude: [1]              # skip cover page; convert everything else
+#   exclude: [15-16]          # skip last two pages
+#   exclude: [1, 15-16]       # skip cover and last two pages
+#
+# When are [] needed?
+#   Always. The value must be a YAML sequence. [] is the compact inline form.
+#   The block form works too but is more verbose:
+#     include:
+#       - 1-14
+#       - 16
+#   Use [] to keep page filters readable on one line.
+#   Do NOT write include: 1-14 (no brackets) — parsed as a plain string, not a list, and will error.
+
+pages:
+  beyfortus label:
+    # Pages 1-2 and 4-7 cover highlights, dosage, and key safety sections.
+    include: [1, 4, 5, 7]
+  ozempic label:
+    include: [1, 3, 6, 12]
+  dificid label:
+    include: [1-5, 7]
+  lipitor label:
+    include: [1, 3, 6, 7, 15, 16]

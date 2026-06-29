@@ -1,0 +1,216 @@
+<div x-data="step1()" class="w-full space-y-6">
+  <div class="flex items-center justify-between gap-4">
+    <div>
+      <h2 class="text-xl font-semibold">Step 1 — Convert</h2>
+      <p class="text-sm text-gray-500 mt-1">Convert PDFs in the input folder to Markdown sidecars.</p>
+    </div>
+    <div class="flex flex-col items-end gap-1.5 shrink-0">
+      <button @click="startConvert()"
+              :disabled="running"
+              class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg font-medium text-sm transition-colors">
+        <span x-show="!running">▶ Run Convert</span>
+        <span x-show="running"><svg viewBox="92 42 496 496" width="18" height="18" class="helms-wheel-spin" style="margin-right:4px"><g transform="translate(340,290)"><circle r="210" fill="none" stroke="#fff" stroke-width="22"/><line x1="0" y1="-210" x2="0" y2="-72" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="0" y1="210" x2="0" y2="72" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="-210" y1="0" x2="-72" y2="0" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="210" y1="0" x2="72" y2="0" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="-148" y1="-148" x2="-51" y2="-51" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="148" y1="148" x2="51" y2="51" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="148" y1="-148" x2="51" y2="-51" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="-148" y1="148" x2="-51" y2="51" stroke="#fff" stroke-width="14" stroke-linecap="round"/><ellipse cx="0" cy="-222" rx="13" ry="26" fill="#fff"/><ellipse cx="0" cy="222" rx="13" ry="26" fill="#fff"/><ellipse cx="-222" cy="0" rx="26" ry="13" fill="#fff"/><ellipse cx="222" cy="0" rx="26" ry="13" fill="#fff"/><ellipse cx="-157" cy="-157" rx="13" ry="26" transform="rotate(-45,-157,-157)" fill="#fff"/><ellipse cx="157" cy="157" rx="13" ry="26" transform="rotate(-45,157,157)" fill="#fff"/><ellipse cx="157" cy="-157" rx="13" ry="26" transform="rotate(45,157,-157)" fill="#fff"/><ellipse cx="-157" cy="157" rx="13" ry="26" transform="rotate(45,-157,157)" fill="#fff"/><circle r="72" fill="rgba(255,255,255,0.2)"/><circle r="56" fill="rgba(255,255,255,0.4)"/></g></svg>Running…</span>
+      </button>
+      <label class="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
+        <input type="checkbox" x-model="force" class="rounded"/>
+        Force re-run
+      </label>
+    </div>
+  </div>
+
+  <!-- Step settings -->
+  <form hx-post="/settings" hx-trigger="change" hx-swap="none"
+        class="flex items-center gap-3 py-2 border-y border-gray-100 text-xs text-gray-500">
+    <span class="font-medium text-gray-400 uppercase tracking-wide shrink-0">Settings</span>
+    <label class="flex items-center gap-1.5">
+      Converter
+      <select name="converter" class="border border-gray-200 rounded px-2 py-1 text-xs bg-white ml-1">
+        {% for c in ['pymupdf4llm','llamaparse'] %}
+          <option {% if c == converter %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+
+  <!-- Log panel — always in DOM; hidden until a run starts -->
+  <div x-show="token" x-data="{ logExpanded: false }">
+    <div class="flex items-center gap-2 mb-2">
+      <span class="text-sm font-medium text-gray-700">Output</span>
+      <span x-show="running" class="animate-pulse text-blue-500 text-xs">● live</span>
+      <span x-show="done && ok" class="text-green-600 text-xs font-medium">✓ Done</span>
+      <span x-show="done && !ok" class="text-red-600 text-xs font-medium">✗ Failed</span>
+      <span class="ml-auto flex items-center gap-1.5">
+        <button @click="logExpanded = !logExpanded" class="text-[10px] text-gray-400 hover:text-gray-200 bg-gray-700 hover:bg-gray-600 px-1.5 py-0.5 rounded transition-colors" title="Toggle height" x-text="logExpanded ? '⤡ collapse' : '⤢ expand'"></button>
+        <button @click="navigator.clipboard.writeText(document.getElementById('log-convert').innerText).then(()=>helmsToast('Copied','success',1800))" class="text-[10px] text-gray-400 hover:text-gray-200 bg-gray-700 hover:bg-gray-600 px-1.5 py-0.5 rounded transition-colors" title="Copy log">⎘ copy</button>
+      </span>
+    </div>
+    <div class="bg-gray-900 rounded-lg p-3 font-mono text-xs text-gray-300 overflow-y-auto log-panel transition-all"
+         :class="logExpanded ? 'h-[60vh]' : 'h-64'"
+         id="log-convert">
+    </div>
+  </div>
+
+  <!-- Converted files + preview panel -->
+  <div x-show="mdFiles.length > 0" x-cloak class="space-y-3">
+    <p class="text-sm font-semibold text-gray-700">
+      Converted files (<span x-text="mdFiles.length"></span>)
+    </p>
+
+    <div class="space-y-1">
+      <label class="text-xs text-gray-500">Preview file</label>
+      <select x-model="selectedMd" @change="onMdSelect()"
+              class="w-full border border-gray-200 rounded px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-400">
+        <template x-for="f in mdFiles" :key="f">
+          <option :value="f" x-text="f"></option>
+        </template>
+      </select>
+    </div>
+
+    <!-- Collapsible markdown preview -->
+    <div x-show="selectedMd" x-cloak class="border border-gray-200 rounded-lg overflow-hidden">
+      <button @click="previewOpen = !previewOpen"
+              class="w-full flex items-center justify-between px-3 py-2 bg-blue-50 text-sm font-medium text-gray-700 hover:bg-blue-100 transition-colors">
+        <span>Markdown preview</span>
+        <span x-text="previewOpen ? '▲' : '▼'" class="text-gray-400 text-xs"></span>
+      </button>
+      <div x-show="previewOpen" x-cloak class="p-4 prose prose-sm max-w-none max-h-[70vh] overflow-y-auto bg-white">
+        <div x-html="renderedMd"></div>
+        <p x-show="mdTruncated" class="text-xs text-gray-400 italic mt-2 border-t pt-2">…(truncated at 8 000 chars)</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function step1() {
+  return {
+    running: false,
+    done: false,
+    ok: null,
+    token: null,
+    force: false,
+    mdFiles: [],
+    selectedMd: '',
+    mdContent: '',
+    mdTruncated: false,
+    previewOpen: false,
+
+    get renderedMd() {
+      if (!this.mdContent) return '';
+      const raw = typeof marked !== 'undefined' ? marked.parse(this.mdContent) : '<pre>' + this.mdContent + '</pre>';
+      return typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(raw) : raw;
+    },
+
+    async _loadMdList() {
+      try {
+        const res = await fetch('/md/list');
+        const data = await res.json();
+        this.mdFiles = data.files || [];
+        if (this.mdFiles.length > 0 && !this.selectedMd) {
+          this.selectedMd = this.mdFiles[0];
+          await this.onMdSelect();
+        }
+      } catch (_) {}
+    },
+
+    async onMdSelect() {
+      if (!this.selectedMd) return;
+      try {
+        const res = await fetch('/md/content?filename=' + encodeURIComponent(this.selectedMd));
+        const data = await res.json();
+        this.mdContent = data.content || '';
+        this.mdTruncated = data.truncated || false;
+      } catch (_) {
+        this.mdContent = '';
+      }
+    },
+
+    async startConvert() {
+      this.running = true;
+      this.done = false;
+      this.ok = null;
+      this.token = '...';
+      const logEl = document.getElementById('log-convert');
+      if (logEl) logEl.innerHTML = '';
+      setBadge('convert', 'running');
+
+      const form = new FormData();
+      form.append('force', this.force);
+      const res = await fetch('/step/convert', { method: 'POST', body: form });
+      if (!res.ok) {
+        const txt = await res.text();
+        helmsToast('Convert: ' + txt.substring(0, 200), 'error');
+        this.running = false; setBadge('convert', 'error'); return;
+      }
+      const data = await res.json();
+      this.token = data.token;
+      this._connectSSE('log-convert');
+    },
+
+    _connectSSE(logId) {
+      const logEl = document.getElementById(logId);
+      const es = new EventSource('/stream/' + this.token);
+      es.onmessage = (e) => {
+        if (logEl) {
+          logEl.innerHTML += e.data;
+          logEl.scrollTop = logEl.scrollHeight;
+        }
+      };
+      es.addEventListener('done', () => {
+        es.close();
+        this.onDone();
+      });
+      es.onerror = () => {
+        if (es.readyState === EventSource.CLOSED) {
+          es.close();
+          this.running = false;
+          this.done = true;
+          this.ok = false;
+          document.dispatchEvent(new CustomEvent('helms:step-done', { detail: { step: 'convert', ok: false } }));
+        }
+      };
+    },
+
+    init() {
+      this._loadMdList();
+      document.addEventListener('helms:step-started', (e) => {
+        if (e.detail.step !== 'convert') return;
+        this.running = true;
+        this.done = false;
+        this.ok = null;
+        this.token = e.detail.token;
+        const logEl = document.getElementById('log-convert');
+        if (logEl) logEl.innerHTML = '';
+        this._connectSSE('log-convert');
+      });
+      document.addEventListener('helms-run-selected', () => {
+        this.mdFiles = [];
+        this.selectedMd = '';
+        this.mdContent = '';
+        this.mdTruncated = false;
+        this.previewOpen = false;
+        this._loadMdList();
+      });
+    },
+
+    onDone() {
+      this.running = false;
+      this.done = true;
+      fetch('/runner-status/' + this.token)
+        .then(r => r.json())
+        .then(d => {
+          this.ok = d.ok;
+          setBadge('convert', d.ok ? 'done' : 'error');
+          document.dispatchEvent(new CustomEvent('helms:step-done', { detail: { step: 'convert', ok: d.ok } }));
+          if (d.ok) this._loadMdList();
+        });
+    },
+  };
+}
+</script>
+
+<div class="flex justify-end items-center gap-3 mt-8 pt-4 border-t border-gray-100 text-sm select-none">
+  <span class="text-gray-300 cursor-not-allowed">Prev</span>
+  <span class="text-gray-300">|</span>
+  <button onclick="showStep('step2')" class="text-indigo-600 hover:text-indigo-800 font-medium transition-colors">Next</button>
+</div>

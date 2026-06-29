@@ -1,0 +1,368 @@
+<div x-data="schemaEditor()" class="w-full space-y-6">
+  <div class="flex items-center justify-between">
+    <div>
+      <h2 class="text-xl font-semibold">Schema Editor</h2>
+      <p class="text-sm text-gray-500 mt-1">Edit extraction rules. Structural fields (node keys, relationship types, property names) are read-only.</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <span x-show="saveMsg" x-text="saveMsg"
+            :class="saveError ? 'text-red-600' : 'text-green-600'"
+            class="text-sm font-medium"></span>
+      <button @click="saveSchema()" :disabled="saving"
+              class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors">
+        <span x-show="!saving">💾 Save schema</span>
+        <span x-show="saving">Saving…</span>
+      </button>
+    </div>
+  </div>
+
+  <div x-show="loadError" class="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700" x-text="loadError"></div>
+
+  <!-- ── Nodes ─────────────────────────────────────────────────────────────── -->
+  <div class="space-y-4">
+    <h3 class="text-base font-semibold text-gray-800 border-b border-gray-200 pb-2">Nodes</h3>
+    <template x-for="(node, key) in nodes" :key="key">
+      <div class="border border-gray-200 rounded-lg overflow-hidden">
+        <!-- Node header -->
+        <div class="flex items-center gap-2 px-3 py-1.5 bg-gray-800 cursor-pointer"
+             @click="toggleSection('node_' + key)">
+          <span class="font-mono text-xs text-green-300" x-text="key"></span>
+          <span class="text-xs text-gray-400 ml-1"
+                x-text="(node.properties || []).length + ' props'"></span>
+          <span class="ml-auto text-gray-400 text-xs" x-text="openSections['node_' + key] ? '▲' : '▼'"></span>
+        </div>
+
+        <div x-show="openSections['node_' + key]" class="p-4 space-y-4">
+          <!-- Description -->
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-gray-600">Description
+              <span class="text-gray-400 font-normal ml-1">— injected into the LLM extraction prompt</span>
+            </label>
+            <textarea x-model="node.description" rows="2"
+                      class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400 resize-y"></textarea>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <!-- Semantic group (single value) -->
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-gray-600">Semantic group
+                <span class="text-gray-400 font-normal ml-1">— single value, filters candidates by type</span>
+              </label>
+              <input type="text" x-model="node.sem_group"
+                     placeholder="e.g. Disorders"
+                     class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+            </div>
+
+            <!-- Semantic types -->
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-gray-600">Semantic types
+                <span class="text-gray-400 font-normal ml-1">— overrides sem_group if set</span>
+              </label>
+              <div class="flex flex-wrap gap-1 min-h-[2rem] border border-gray-200 rounded-lg px-2 py-1 bg-white">
+                <template x-for="(t, ti) in (node.semantic_types || [])" :key="ti">
+                  <span class="flex items-center gap-1 bg-purple-50 text-purple-700 text-xs px-2 py-0.5 rounded-full">
+                    <span x-text="t"></span>
+                    <button @click="removeTag(node, 'semantic_types', ti)" class="text-purple-400 hover:text-purple-600 leading-none">×</button>
+                  </span>
+                </template>
+                <input type="text" placeholder="+ add type"
+                       class="flex-1 min-w-[6rem] text-xs outline-none bg-transparent py-0.5"
+                       @keydown.enter.prevent="addTag(node, 'semantic_types', $event.target); $event.target.value = ''"
+                       @keydown.comma.prevent="addTag(node, 'semantic_types', $event.target); $event.target.value = ''"/>
+              </div>
+            </div>
+          </div>
+
+          <!-- UMLS vocabs -->
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-gray-600">Source vocabularies
+              <span class="text-gray-400 font-normal ml-1">— leave empty to search all</span>
+            </label>
+            <div class="flex flex-wrap gap-1 min-h-[2rem] border border-gray-200 rounded-lg px-2 py-1 bg-white">
+              <template x-for="(v, vi) in (node.umls_vocabs || [])" :key="vi">
+                <span class="flex items-center gap-1 bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full font-mono">
+                  <span x-text="v"></span>
+                  <button @click="removeTag(node, 'umls_vocabs', vi)" class="text-blue-400 hover:text-blue-600 leading-none">×</button>
+                </span>
+              </template>
+              <input type="text" placeholder="+ add vocab (e.g. RXNORM)"
+                     class="flex-1 min-w-[8rem] text-xs outline-none bg-transparent py-0.5 font-mono"
+                     @keydown.enter.prevent="addTag(node, 'umls_vocabs', $event.target); $event.target.value = ''"
+                     @keydown.comma.prevent="addTag(node, 'umls_vocabs', $event.target); $event.target.value = ''"/>
+            </div>
+          </div>
+
+          <!-- Properties (read-only table) -->
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-gray-600">Properties <span class="text-gray-400 font-normal">(structural — read-only)</span></label>
+            <table class="w-full text-xs border-collapse">
+              <thead>
+                <tr class="bg-gray-50">
+                  <th class="text-left px-3 py-1.5 border border-gray-200 font-medium text-gray-600">name</th>
+                  <th class="text-left px-3 py-1.5 border border-gray-200 font-medium text-gray-600">type</th>
+                  <th class="text-left px-3 py-1.5 border border-gray-200 font-medium text-gray-600">source</th>
+                  <th class="text-left px-3 py-1.5 border border-gray-200 font-medium text-gray-600">PK</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="prop in (node.properties || [])" :key="prop.name">
+                  <tr class="hover:bg-gray-50">
+                    <td class="px-3 py-1.5 border border-gray-200 font-mono text-gray-700" x-text="prop.name"></td>
+                    <td class="px-3 py-1.5 border border-gray-200 text-gray-500" x-text="prop.type || '—'"></td>
+                    <td class="px-3 py-1.5 border border-gray-200">
+                      <span :class="{
+                        'bg-blue-50 text-blue-700': prop.source === 'umls',
+                        'bg-green-50 text-green-700': prop.source === 'llm',
+                        'bg-gray-100 text-gray-600': prop.source === 'pipeline',
+                      }" class="px-1.5 py-0.5 rounded font-mono" x-text="prop.source || '—'"></span>
+                    </td>
+                    <td class="px-3 py-1.5 border border-gray-200 text-center" x-text="prop.primary_key ? '✓' : ''"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- ── Relationships ──────────────────────────────────────────────────────── -->
+  <div class="space-y-4">
+    <h3 class="text-base font-semibold text-gray-800 border-b border-gray-200 pb-2">Relationships</h3>
+    <template x-for="rel in relationships" :key="rel.rel_type">
+      <div class="border border-gray-200 rounded-lg overflow-hidden">
+        <!-- Rel header -->
+        <div class="flex items-center gap-2 px-3 py-1.5 bg-gray-800 cursor-pointer"
+             @click="toggleSection('rel_' + rel.rel_type)">
+          <span class="font-mono text-xs text-indigo-300" x-text="rel.rel_type"></span>
+          <span class="text-xs text-gray-400">
+            <span x-text="rel.from_node"></span>
+            <span class="text-gray-500 mx-1">→</span>
+            <span x-text="rel.to_node"></span>
+          </span>
+          <span class="ml-auto text-gray-400 text-xs" x-text="openSections['rel_' + rel.rel_type] ? '▲' : '▼'"></span>
+        </div>
+
+        <div x-show="openSections['rel_' + rel.rel_type]" class="p-4 space-y-4">
+          <!-- Structural fields (read-only) -->
+          <div class="grid grid-cols-2 gap-3">
+            <div class="space-y-0.5">
+              <p class="text-xs text-gray-400">From field (LLM output key)</p>
+              <p class="font-mono text-xs bg-gray-100 px-2 py-1.5 rounded text-gray-600" x-text="rel.from_field || '—'"></p>
+            </div>
+            <div class="space-y-0.5">
+              <p class="text-xs text-gray-400">To field (LLM output key)</p>
+              <p class="font-mono text-xs bg-gray-100 px-2 py-1.5 rounded text-gray-600" x-text="rel.to_field || '—'"></p>
+            </div>
+          </div>
+
+          <!-- From hint -->
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-gray-600">From hint
+              <span class="text-gray-400 font-normal ml-1">— tells the LLM what to put in the from field</span>
+            </label>
+            <textarea x-model="rel.from_hint" rows="2"
+                      class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400 resize-y"></textarea>
+          </div>
+
+          <!-- To hint -->
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-gray-600">To hint
+              <span class="text-gray-400 font-normal ml-1">— tells the LLM what to put in the to field</span>
+            </label>
+            <textarea x-model="rel.to_hint" rows="2"
+                      class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400 resize-y"></textarea>
+          </div>
+
+          <!-- Extract prompt -->
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-gray-600">Extraction prompt
+              <span class="text-gray-400 font-normal ml-1">— injected directly into the LLM triple extraction prompt</span>
+            </label>
+            <textarea x-model="rel.extract_prompt" rows="3"
+                      class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400 resize-y font-mono"></textarea>
+          </div>
+
+          <!-- Examples -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-medium text-gray-600">Examples
+                <span class="text-gray-400 font-normal ml-1">— few-shot examples for the LLM</span>
+              </label>
+              <button @click="addExample(rel)"
+                      class="text-xs text-indigo-600 hover:text-indigo-800 transition-colors">+ Add example</button>
+            </div>
+            <template x-for="(ex, ei) in (rel.examples || [])" :key="ei">
+              <div class="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
+                <div class="flex-1 grid grid-cols-2 gap-2">
+                  <div class="space-y-0.5">
+                    <p class="text-[10px] text-gray-400 font-mono" x-text="rel.from_field"></p>
+                    <input type="text" :value="ex[rel.from_field]"
+                           @input="ex[rel.from_field] = $event.target.value"
+                           class="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+                  </div>
+                  <div class="space-y-0.5">
+                    <p class="text-[10px] text-gray-400 font-mono" x-text="rel.to_field"></p>
+                    <input type="text" :value="ex[rel.to_field]"
+                           @input="ex[rel.to_field] = $event.target.value"
+                           class="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+                  </div>
+                </div>
+                <button @click="rel.examples.splice(ei, 1)"
+                        class="text-gray-300 hover:text-red-500 transition-colors text-lg leading-none shrink-0">×</button>
+              </div>
+            </template>
+            <p x-show="!(rel.examples || []).length" class="text-xs text-gray-400 italic">No examples yet.</p>
+          </div>
+
+          <!-- LLM rel-prop hints -->
+          <template x-if="rel.properties && rel.properties.some(p => p.source === 'llm')">
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-gray-600">Relationship property hints
+                <span class="text-gray-400 font-normal ml-1">— guide the LLM on what to extract for each edge property</span>
+              </label>
+              <template x-for="prop in rel.properties.filter(p => p.source === 'llm')" :key="prop.name">
+                <div class="flex items-center gap-3">
+                  <span class="font-mono text-xs text-gray-600 w-28 shrink-0" x-text="prop.name"></span>
+                  <span class="font-mono text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded shrink-0" x-text="prop.type || 'STRING'"></span>
+                  <input type="text" x-model="prop.hint"
+                         class="flex-1 border border-gray-200 rounded px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                         :placeholder="'Hint for ' + prop.name"/>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+      </div>
+    </template>
+  </div>
+
+</div>
+
+<script>
+function schemaEditor() {
+  return {
+    nodes: {},
+    relationships: [],
+    openSections: {},
+    saving: false,
+    saveMsg: '',
+    saveError: false,
+    loadError: '',
+
+    async _loadSchema() {
+      this.loadError = '';
+      try {
+        const res = await fetch('/schema/load');
+        const data = await res.json();
+        if (data.error) { this.loadError = data.error; return; }
+        this.nodes = data.nodes || {};
+        this.relationships = data.relationships || [];
+        // Ensure arrays exist on every node; virtualise sem_group as a 1-element tag list
+        for (const k in this.nodes) {
+          const n = this.nodes[k];
+          if (!n.umls_vocabs)    n.umls_vocabs    = [];
+          if (!n.semantic_types) n.semantic_types = [];
+          if (!n.properties)     n.properties     = [];
+          if (!n.sem_group)      n.sem_group      = '';
+        }
+        // Ensure examples array exists on every rel
+        for (const r of this.relationships) {
+          if (!r.examples) r.examples = [];
+        }
+        // Open first node and first rel by default
+        const firstNode = Object.keys(this.nodes)[0];
+        if (firstNode) this.openSections['node_' + firstNode] = true;
+        if (this.relationships[0]) this.openSections['rel_' + this.relationships[0].rel_type] = true;
+      } catch (e) {
+        this.loadError = 'Failed to load schema.yaml';
+      }
+    },
+
+    async init() {
+      await this._loadSchema();
+      document.addEventListener('htmx:afterRequest', (e) => {
+        if (e.detail.xhr && e.detail.xhr.getResponseHeader('HX-Trigger') === 'helms-project-changed') {
+          this._loadSchema();
+        }
+      });
+    },
+
+    toggleSection(key) {
+      this.openSections[key] = !this.openSections[key];
+    },
+
+    addTag(obj, field, inputEl) {
+      const val = inputEl.value.trim();
+      if (!val) return;
+      if (!obj[field]) obj[field] = [];
+      if (!obj[field].includes(val)) obj[field].push(val);
+    },
+
+    removeTag(obj, field, idx) {
+      obj[field].splice(idx, 1);
+    },
+
+    addExample(rel) {
+      if (!rel.examples) rel.examples = [];
+      const ex = {};
+      if (rel.from_field) ex[rel.from_field] = '';
+      if (rel.to_field)   ex[rel.to_field]   = '';
+      rel.examples.push(ex);
+    },
+
+    async saveSchema() {
+      this.saving = true;
+      this.saveMsg = '';
+      this.saveError = false;
+
+      // Build prop_hints map for each relationship
+      const relsPayload = this.relationships.map(rel => {
+        const prop_hints = {};
+        for (const p of (rel.properties || [])) {
+          if (p.source === 'llm') prop_hints[p.name] = p.hint || '';
+        }
+        return {
+          rel_type:      rel.rel_type,
+          from_hint:     rel.from_hint     || '',
+          to_hint:       rel.to_hint       || '',
+          extract_prompt: rel.extract_prompt || '',
+          examples:      rel.examples      || [],
+          prop_hints,
+        };
+      });
+
+      const nodesPayload = {};
+      for (const [k, n] of Object.entries(this.nodes)) {
+        nodesPayload[k] = {
+          description:    n.description    || '',
+          sem_group:      n.sem_group || '',
+          umls_vocabs:    n.umls_vocabs    || [],
+          semantic_types: n.semantic_types || [],
+        };
+      }
+
+      try {
+        const res = await fetch('/schema/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nodes: nodesPayload, relationships: relsPayload }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          this.saveMsg = 'Saved ✓';
+        } else {
+          this.saveError = true;
+          this.saveMsg = data.error || 'Save failed';
+        }
+      } catch {
+        this.saveError = true;
+        this.saveMsg = 'Save failed';
+      }
+      this.saving = false;
+      setTimeout(() => { this.saveMsg = ''; }, 3000);
+    },
+  };
+}
+</script>

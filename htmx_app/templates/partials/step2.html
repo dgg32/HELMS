@@ -1,0 +1,831 @@
+<div x-data="step2()" class="w-full space-y-6">
+  <div class="flex items-center justify-between gap-4">
+    <div>
+      <h2 class="text-xl font-semibold">Step 2 — Extract</h2>
+      <p class="text-sm text-gray-500 mt-1">Run LLM extraction, then review and edit the resulting triples.</p>
+    </div>
+    <div class="flex flex-col items-end gap-1.5 shrink-0">
+      <button @click="startExtract()"
+              :disabled="running"
+              class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg font-medium text-sm transition-colors">
+        <span x-show="!running">▶ Run Extract</span>
+        <span x-show="running"><svg viewBox="92 42 496 496" width="18" height="18" class="helms-wheel-spin" style="margin-right:4px"><g transform="translate(340,290)"><circle r="210" fill="none" stroke="#fff" stroke-width="22"/><line x1="0" y1="-210" x2="0" y2="-72" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="0" y1="210" x2="0" y2="72" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="-210" y1="0" x2="-72" y2="0" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="210" y1="0" x2="72" y2="0" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="-148" y1="-148" x2="-51" y2="-51" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="148" y1="148" x2="51" y2="51" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="148" y1="-148" x2="51" y2="-51" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="-148" y1="148" x2="-51" y2="51" stroke="#fff" stroke-width="14" stroke-linecap="round"/><ellipse cx="0" cy="-222" rx="13" ry="26" fill="#fff"/><ellipse cx="0" cy="222" rx="13" ry="26" fill="#fff"/><ellipse cx="-222" cy="0" rx="26" ry="13" fill="#fff"/><ellipse cx="222" cy="0" rx="26" ry="13" fill="#fff"/><ellipse cx="-157" cy="-157" rx="13" ry="26" transform="rotate(-45,-157,-157)" fill="#fff"/><ellipse cx="157" cy="157" rx="13" ry="26" transform="rotate(-45,157,157)" fill="#fff"/><ellipse cx="157" cy="-157" rx="13" ry="26" transform="rotate(45,157,-157)" fill="#fff"/><ellipse cx="-157" cy="157" rx="13" ry="26" transform="rotate(45,-157,157)" fill="#fff"/><circle r="72" fill="rgba(255,255,255,0.2)"/><circle r="56" fill="rgba(255,255,255,0.4)"/></g></svg>Running…</span>
+      </button>
+      <label class="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
+        <input type="checkbox" x-model="force" class="rounded"/>
+        Force re-run
+      </label>
+    </div>
+  </div>
+
+  <!-- Step settings -->
+  <form hx-post="/settings" hx-trigger="change" hx-swap="none"
+        class="flex flex-wrap items-center gap-4 py-2 border-y border-gray-100 text-xs text-gray-500"
+        x-data="{ idx: {% if filter_level == 'loose' %}0{% elif filter_level == 'strict' %}2{% else %}1{% endif %} }">
+    <span class="font-medium text-gray-400 uppercase tracking-wide shrink-0">Settings</span>
+    <label class="flex items-center gap-1.5">
+      Extraction LLM
+      <select name="llm_model" class="border border-gray-200 rounded px-2 py-1 text-xs bg-white ml-1">
+        {% for m in llm_models %}
+          <option {% if m == llm_model %}selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="flex items-center gap-1.5">
+      Check LLM
+      <span class="relative group cursor-default">
+        <span class="text-gray-400 hover:text-gray-600 text-[11px] select-none">ⓘ</span>
+        <span class="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 w-64 bg-gray-800 text-white text-[11px] leading-snug rounded-md px-2.5 py-2 opacity-0 group-hover:opacity-100 transition-opacity z-50 whitespace-normal shadow-lg">
+          Model that <strong>grades</strong> extracted triples in the semantic check. Pick a different model, or provider, so no model grades its own output. <em>Same as Extraction LLM</em> reuses the extraction model.
+        </span>
+      </span>
+      <select name="semantic_check_model" class="border border-gray-200 rounded px-2 py-1 text-xs bg-white ml-1">
+        <option value="" {% if not semantic_check_model %}selected{% endif %}>same as Extraction LLM</option>
+        {% for m in llm_models %}
+          <option value="{{ m }}" {% if m == semantic_check_model %}selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="flex items-center gap-2">
+      Filter
+      <span class="relative group cursor-default" title="">
+        <span class="text-gray-400 hover:text-gray-600 text-[11px] select-none">ⓘ</span>
+        <span class="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 w-64 bg-gray-800 text-white text-[11px] leading-snug rounded-md px-2.5 py-2 opacity-0 group-hover:opacity-100 transition-opacity z-50 whitespace-normal shadow-lg">
+          Controls <strong>extraction gate</strong> (which triples LLM keeps) and <strong>Step 3 write gate</strong> (which triples go into the graph DB).<br><br>
+          Does <em>not</em> hide triples in the review list. Use the 🟢🟡🔴 toggle buttons in the filter bar to show/hide by color.
+        </span>
+      </span>
+      <span class="text-[11px] inline-block w-12 text-center shrink-0">
+        <span x-show="idx===0">🔴🟡🟢</span>
+        <span x-show="idx===1">🟡🟢</span>
+        <span x-show="idx===2">🟢</span>
+      </span>
+      <input type="range" min="0" max="2" step="1" x-model.number="idx"
+             class="w-20 cursor-pointer accent-indigo-500"/>
+      <input type="hidden" name="filter_level" :value="['loose','moderate','strict'][idx]"/>
+    </label>
+  </form>
+
+  <!-- Log panel — always in DOM; hidden until a run starts -->
+  <div x-show="token || agentToken" x-data="{ logExpanded: false }">
+    <div class="flex items-center gap-2 mb-2">
+      <span class="text-sm font-medium text-gray-700">Output</span>
+      <span x-show="running" class="animate-pulse text-blue-500 text-xs">● live</span>
+      <span x-show="agentRunning" class="animate-pulse text-indigo-400 text-xs">● smart retry (<span x-text="agentRelType"></span>)</span>
+      <span x-show="done && ok && !agentRunning" class="text-green-600 text-xs font-medium">✓ Done</span>
+      <span x-show="done && !ok && !agentRunning" class="text-red-600 text-xs font-medium">✗ Failed</span>
+      <span x-show="currentModel" x-text="'🤖 ' + currentModel"
+            class="text-xs text-gray-400 font-mono"></span>
+      <span class="ml-auto flex items-center gap-1.5">
+        <button @click="logExpanded = !logExpanded" class="text-[10px] text-gray-400 hover:text-gray-200 bg-gray-700 hover:bg-gray-600 px-1.5 py-0.5 rounded transition-colors" title="Toggle height" x-text="logExpanded ? '⤡ collapse' : '⤢ expand'"></button>
+        <button @click="navigator.clipboard.writeText(document.getElementById('log-extract').innerText).then(()=>helmsToast('Copied','success',1800))" class="text-[10px] text-gray-400 hover:text-gray-200 bg-gray-700 hover:bg-gray-600 px-1.5 py-0.5 rounded transition-colors" title="Copy log">⎘ copy</button>
+      </span>
+    </div>
+    <div class="bg-gray-900 rounded-lg p-3 font-mono text-xs text-gray-300 overflow-y-auto log-panel transition-all"
+         :class="logExpanded ? 'h-[60vh]' : 'h-48'"
+         id="log-extract">
+    </div>
+  </div>
+
+  <!-- Extraction quality panel (shown after successful extract) -->
+  <div x-show="qualityData" x-cloak
+       class="bg-gray-50 border border-gray-200 rounded-lg p-3">
+    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Extraction quality</p>
+    <table class="w-full text-xs border-collapse [table-layout:fixed]">
+      <colgroup>
+        <col class="w-[10rem]">
+        <col class="w-[2.5rem]">
+        <col class="w-[4rem]">
+        <col class="w-[2.5rem]">
+        <col class="w-[4rem]">
+        <col class="w-[2.5rem]">
+        <col class="w-[4rem]">
+        <col class="w-[1.5rem]">
+        <col class="w-[4rem]">
+        <col>
+      </colgroup>
+      <tbody>
+        <template x-for="f in (qualityData ? qualityData.files : [])" :key="f.name">
+          <tr class="leading-relaxed">
+            <td class="font-mono pr-4 py-0.5 max-w-[10rem] truncate">
+              <button type="button"
+                      class="text-blue-600 hover:text-blue-800 hover:underline text-left truncate max-w-full"
+                      x-text="f.name"
+                      @click="onFileSelect(f.raw_path, f.rev_path)"></button>
+            </td>
+            <td class="py-0.5 text-green-600 pl-1 pr-0.5 whitespace-nowrap">🟢</td>
+            <td class="py-0.5 text-green-600 pr-4 tabular-nums" x-text="f.green"></td>
+            <td class="py-0.5 text-yellow-600 pr-0.5 whitespace-nowrap">🟡</td>
+            <td class="py-0.5 text-yellow-600 pr-4 tabular-nums" x-text="f.yellow"></td>
+            <td class="py-0.5 text-red-600 pr-0.5 whitespace-nowrap">🔴</td>
+            <td class="py-0.5 text-red-600 pr-4 tabular-nums" x-text="f.red"></td>
+            <td class="py-0.5 text-gray-400 pr-0.5">/</td>
+            <td class="py-0.5 text-gray-400 pr-3 tabular-nums" x-text="f.total"></td>
+            <td class="py-0.5">
+              <template x-if="f.rejected > 0 || f.added > 0">
+                <span class="flex items-center gap-1 pl-2 border-l border-gray-300 whitespace-nowrap">
+                  <span class="text-gray-400">→</span>
+                  <span class="font-semibold text-gray-700"><span x-text="f.active"></span> active</span>
+                  <span x-show="f.rejected > 0" class="text-red-400">−<span x-text="f.rejected"></span></span>
+                  <span x-show="f.added > 0"    class="text-blue-500">+<span x-text="f.added"></span></span>
+                </span>
+              </template>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+      <template x-if="qualityData && qualityData.files && qualityData.files.length > 1">
+        <tbody>
+          <tr class="font-semibold [&>td]:border-t [&>td]:border-gray-200 [&>td]:pt-1.5">
+            <td class="text-gray-700 pr-4 pb-0.5">Total</td>
+            <td class="text-green-700 pl-1 pr-0.5 pb-0.5 whitespace-nowrap">🟢</td>
+            <td class="text-green-700 pr-4 tabular-nums pb-0.5" x-text="qualityData.total.green"></td>
+            <td class="text-yellow-700 pr-0.5 pb-0.5 whitespace-nowrap">🟡</td>
+            <td class="text-yellow-700 pr-4 tabular-nums pb-0.5" x-text="qualityData.total.yellow"></td>
+            <td class="text-red-700 pr-0.5 pb-0.5 whitespace-nowrap">🔴</td>
+            <td class="text-red-700 pr-4 tabular-nums pb-0.5" x-text="qualityData.total.red"></td>
+            <td class="text-gray-500 pr-0.5 pb-0.5">/</td>
+            <td class="text-gray-500 pr-3 tabular-nums pb-0.5" x-text="qualityData.total.total"></td>
+            <td class="pb-0.5">
+              <template x-if="qualityData.total.rejected > 0 || qualityData.total.added > 0">
+                <span class="flex items-center gap-1 pl-2 border-l border-gray-300 whitespace-nowrap">
+                  <span class="text-gray-400">→</span>
+                  <span class="text-gray-700"><span x-text="qualityData.total.active"></span> active</span>
+                  <span x-show="qualityData.total.rejected > 0" class="text-red-400">−<span x-text="qualityData.total.rejected"></span></span>
+                  <span x-show="qualityData.total.added > 0"    class="text-blue-500">+<span x-text="qualityData.total.added"></span></span>
+                </span>
+              </template>
+            </td>
+          </tr>
+        </tbody>
+      </template>
+    </table>
+  </div>
+
+  <!-- Unresolved UMLS entities panel -->
+  <div x-show="unresolvedEntries.length > 0" x-cloak
+       class="border border-amber-200 rounded-lg overflow-hidden">
+    <button @click="unresolvedOpen = !unresolvedOpen"
+            class="w-full flex items-center justify-between px-3 py-2 bg-amber-50 text-sm font-medium text-gray-700 hover:bg-amber-100 transition-colors">
+      <span>⚠️ Unresolved UMLS entities (<span x-text="unresolvedTotal"></span>)</span>
+      <span x-text="unresolvedOpen ? '▲' : '▼'" class="text-gray-400 text-xs"></span>
+    </button>
+    <div x-show="unresolvedOpen" x-cloak class="p-3 bg-white space-y-2">
+      <p class="text-xs text-gray-500">
+        Entities the node agent could not resolve. To fix before next run: widen
+        <code class="bg-gray-100 px-1 rounded">umls_vocabs</code> /
+        <code class="bg-gray-100 px-1 rounded">sem_group</code> in
+        <code class="bg-gray-100 px-1 rounded">schema.yaml</code>, or add preferred
+        UMLS terminology to <code class="bg-gray-100 px-1 rounded">instructions</code> in
+        <code class="bg-gray-100 px-1 rounded">meta.yaml</code>.
+      </p>
+      <p class="text-xs font-medium text-gray-600 italic">No acceptable UMLS match — dropped by LLM</p>
+      <ul class="space-y-0.5 pl-1">
+        <template x-for="e in unresolvedEntries" :key="e.entity + e.label">
+          <li class="text-xs flex items-baseline gap-1.5">
+            <span class="text-gray-400 shrink-0">•</span>
+            <span class="font-semibold text-gray-800" x-text="e.entity"></span>
+            <span class="font-mono text-green-700 bg-green-50 px-1 rounded text-[10px]" x-text="e.label"></span>
+          </li>
+        </template>
+      </ul>
+      <p x-show="unresolvedTotal > unresolvedEntries.length"
+         class="text-xs text-gray-400 pt-1 border-t border-gray-100">
+        …and <span x-text="unresolvedTotal - unresolvedEntries.length"></span> more
+        (see <code class="bg-gray-100 px-1 rounded">_node_agent_errors.jsonl</code> in run folder)
+      </p>
+    </div>
+  </div>
+
+  <hr class="border-gray-200"/>
+
+  <!-- Review file selector -->
+  <div>
+    <label class="block text-xs font-medium text-gray-500 mb-1">Review file</label>
+    <div class="flex items-center gap-2">
+      <div id="review-files-container"
+           class="flex-1"
+           hx-get="/review/files"
+           hx-trigger="reload-files from:document"
+           hx-swap="innerHTML">
+        {% include "partials/step2_files.html" %}
+      </div>
+      <template x-if="selectedFile">
+        <button @click="retryFile()"
+                :disabled="running"
+                class="px-3 py-1.5 border border-gray-300 hover:bg-gray-50 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
+          ↺ File Retry
+        </button>
+      </template>
+      <template x-if="selectedFile">
+        <span class="flex-1"></span>
+      </template>
+      <template x-if="selectedFile">
+        <button @click="$store.helms.showAddForm = !$store.helms.showAddForm"
+                class="px-3 py-1.5 border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
+          + Add Triple
+        </button>
+      </template>
+      <template x-if="selectedFile">
+        <span :class="$store.helms.dirty ? 'text-amber-600' : 'invisible'"
+              class="text-xs font-medium whitespace-nowrap">⚠ Unsaved</span>
+      </template>
+      <template x-if="selectedFile">
+        <button @click="discardChanges()"
+                :disabled="!$store.helms.dirty"
+                class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors whitespace-nowrap">
+          Discard
+        </button>
+      </template>
+      <template x-if="selectedFile">
+        <button @click="saveChanges()"
+                :disabled="!$store.helms.dirty"
+                class="px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-30 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
+          💾 Save
+        </button>
+      </template>
+    </div>
+  </div>
+
+  <!-- Triple editor (loaded via HTMX when file selected) -->
+  <div id="triple-editor" class="space-y-3">
+    <p class="text-sm text-gray-400 italic">Select a review file above to load triples.</p>
+  </div>
+
+</div>
+
+<script>
+// triplesList and tripleCard must be defined at page-load time (not inside the
+// HTMX-swapped partial) so Alpine can call them as soon as the swapped HTML
+// lands in the DOM — before the partial's own <script> has executed.
+
+// Shared store: agent retry running state — readable by HTMX-swapped partials via $store.helms
+document.addEventListener('alpine:init', () => {
+  Alpine.store('helms', { agentRunning: false, dirty: false, showRejected: true, showAddForm: false });
+});
+
+function triplesList(initGreen, initYellow, initRed, relTypeMap, nodePkMap) {
+  return {
+    relTypeMap:   relTypeMap || {},
+    nodePkMap:    nodePkMap  || {},
+    newRelType:   '',
+    newFromProps: {},
+    newToProps:   {},
+    newRelProps:  {},
+    addedTriples: [],
+    activeStats: {
+      green:  initGreen,
+      yellow: initYellow,
+      red:    initRed,
+      total:  initGreen + initYellow + initRed,
+    },
+
+    // ── faceted filter state ─────────────────────────────────────────────────
+    searchText:    '',
+    filterColors:  { green: true, yellow: true, red: true },
+    filterRelType: '',
+
+    get hasActiveFilter() {
+      return this.searchText !== '' ||
+             !this.filterColors.green || !this.filterColors.yellow || !this.filterColors.red ||
+             this.filterRelType !== '';
+    },
+
+    toggleColor(color) {
+      const next = !this.filterColors[color];
+      // Prevent deselecting the last active color
+      if (!next && !Object.entries(this.filterColors).some(([k, v]) => k !== color && v)) return;
+      this.filterColors[color] = next;
+    },
+
+    clearFilters() {
+      this.searchText    = '';
+      this.filterColors  = { green: true, yellow: true, red: true };
+      this.filterRelType = '';
+    },
+
+    matchesFilter(fromName, toName, color, relType) {
+      if (!this.filterColors[color]) return false;
+      if (this.filterRelType && relType !== this.filterRelType) return false;
+      if (this.searchText) {
+        const q = this.searchText.toLowerCase();
+        const fn = (fromName || '').toLowerCase();
+        const tn = (toName   || '').toLowerCase();
+        if (!fn.includes(q) && !tn.includes(q)) return false;
+      }
+      return true;
+    },
+
+    get canAddTriple() {
+      const info = this.relTypeMap[this.newRelType];
+      if (!info) return false;
+      return !!(this.newFromProps[info.from_pk] && this.newToProps[info.to_pk]);
+    },
+
+    init() {
+      window._helmsAddedTriples = () => this.addedTriples;
+      document.addEventListener('helms:triple-state-change', (e) => {
+        const { wasRejected, nowRejected, color } = e.detail;
+        if (wasRejected === nowRejected) return;
+        const delta = nowRejected ? -1 : 1;
+        if (color === 'yellow') this.activeStats.yellow += delta;
+        else if (color === 'red') this.activeStats.red += delta;
+        else this.activeStats.green += delta;
+        this.activeStats.total += delta;
+      });
+    },
+
+    onRelTypeChange() {
+      const info = this.relTypeMap[this.newRelType];
+      if (info) {
+        this.newFromProps = Object.fromEntries((info.from_keys || []).map(k => [k, '']));
+        this.newToProps   = Object.fromEntries((info.to_keys   || []).map(k => [k, '']));
+        this.newRelProps  = Object.fromEntries((info.rel_prop_keys || []).map(k => [k, '']));
+      } else {
+        this.newFromProps = {};
+        this.newToProps   = {};
+        this.newRelProps  = {};
+      }
+    },
+
+    _resetAddForm() {
+      this.newRelType   = '';
+      this.newFromProps = {};
+      this.newToProps   = {};
+      this.newRelProps  = {};
+    },
+
+    addTriple() {
+      const info = this.relTypeMap[this.newRelType];
+      if (!info) return;
+      const id = 'add_' + Math.random().toString(36).slice(2, 10);
+      const fromProps = Object.fromEntries(Object.entries(this.newFromProps).filter(([, v]) => v));
+      const toProps   = Object.fromEntries(Object.entries(this.newToProps).filter(([, v]) => v));
+      this.addedTriples.push({
+        _id:        id,
+        from_label: info.from_label,
+        from_pk:    info.from_pk,
+        from_props: fromProps,
+        to_label:   info.to_label,
+        to_pk:      info.to_pk,
+        to_props:   toProps,
+        rel_type:   this.newRelType,
+        rel_props:  Object.fromEntries(Object.entries(this.newRelProps).filter(([, v]) => v)),
+        triple_color: 'green',
+      });
+      Alpine.store('helms').showAddForm = false;
+      this._resetAddForm();
+      this.activeStats.green++;
+      this.activeStats.total++;
+      Alpine.store('helms').dirty = true;
+    },
+
+    removeAdded(id) {
+      this.addedTriples = this.addedTriples.filter(t => t._id !== id);
+      this.activeStats.green--;
+      this.activeStats.total--;
+      Alpine.store('helms').dirty = true;
+    },
+  };
+}
+
+function tripleCard(triple, initialRejected) {
+  return {
+    tripleId:    triple._id || '',
+    tripleColor: triple.triple_color || 'green',
+    relType:     triple.rel_type || '',
+    expanded:    false,
+    rejected:    initialRejected,
+    dirty:       false,
+    fromName:  triple.from_props?.name || Object.values(triple.from_props || {})[0] || '',
+    toName:    triple.to_props?.name   || Object.values(triple.to_props   || {})[0] || '',
+    fromProps: { ...(triple.from_props || {}) },
+    toProps:   { ...(triple.to_props   || {}) },
+    relProps:  { ...(triple.rel_props  || {}) },
+    quote:     triple.supporting_quote || '',
+
+    toggleReject() {
+      const wasRejected = this.rejected;
+      this.rejected = !this.rejected;
+      this._syncAttrs();
+      this.markDirty();
+      document.dispatchEvent(new CustomEvent('helms:triple-state-change', {
+        detail: { wasRejected, nowRejected: this.rejected, color: this.tripleColor },
+      }));
+    },
+
+    markDirty() {
+      this.dirty = true;
+      this._syncAttrs();
+      Alpine.store('helms').dirty = true;
+    },
+
+    cycleColor() {
+      const order = ['green', 'yellow', 'red'];
+      const idx = order.indexOf(this.tripleColor);
+      this.tripleColor = order[(idx + 1) % 3];
+      this.markDirty();
+      this._syncAttrs();
+    },
+
+    _syncAttrs() {
+      const el = document.querySelector('[data-triple-id="' + this.tripleId + '"]');
+      if (!el) return;
+      el.dataset.tripleRejected = this.rejected ? '1' : '0';
+      el.dataset.tripleDirty    = this.dirty    ? '1' : '0';
+      el.dataset.tripleColor    = this.tripleColor;
+      el.dataset.tripleFrom     = JSON.stringify(this.fromProps);
+      el.dataset.tripleTo       = JSON.stringify(this.toProps);
+      el.dataset.tripleRel      = JSON.stringify(this.relProps);
+      el.dataset.tripleQuote    = this.quote;
+    },
+  };
+}
+
+function step2() {
+  return {
+    running: false,
+    done: false,
+    ok: null,
+    token: null,
+    force: false,
+    selectedFile: null,
+    rawPath: null,
+    revPath: null,
+    qualityData: null,
+    currentModel: '',
+    unresolvedEntries: [],
+    unresolvedTotal: 0,
+    unresolvedOpen: false,
+
+    agentRunning: false,
+    agentToken: null,
+    agentRelType: '',
+
+    // ── extract ─────────────────────────────────────────────────────────────
+
+    async startExtract(inputFile = '', forceOverride = null) {
+      this.running = true;
+      this.done = false;
+      this.ok = null;
+      this.token = '...';
+      const logEl = document.getElementById('log-extract');
+      if (logEl) logEl.innerHTML = '';
+      setBadge('extract', 'running');
+
+      const form = new FormData();
+      form.append('force', forceOverride !== null ? forceOverride : this.force);
+      form.append('input_file', inputFile);
+      const res = await fetch('/step/extract', { method: 'POST', body: form });
+      if (!res.ok) {
+        const txt = await res.text();
+        helmsToast('Extract: ' + txt.substring(0, 200), 'error');
+        this.running = false; setBadge('extract', 'error'); return;
+      }
+      const data = await res.json();
+      this.token = data.token;
+      if (data.llm_model) this.currentModel = data.llm_model;
+      this._connectSSE('log-extract');
+    },
+
+    _connectSSE(logId) {
+      const logEl = document.getElementById(logId);
+      const es = new EventSource('/stream/' + this.token);
+      es.onmessage = (e) => {
+        if (logEl) {
+          logEl.innerHTML += e.data;
+          logEl.scrollTop = logEl.scrollHeight;
+        }
+      };
+      es.addEventListener('done', () => {
+        es.close();
+        this.onDone();
+      });
+      es.onerror = () => {
+        if (es.readyState === EventSource.CLOSED) {
+          es.close();
+          this.running = false;
+          this.done = true;
+          this.ok = false;
+          document.dispatchEvent(new CustomEvent('helms:step-done', { detail: { step: 'extract', ok: false } }));
+        }
+      };
+    },
+
+    async retryFile() {
+      if (!this.selectedFile) return;
+      // Always force=true: user explicitly wants to re-extract this file
+      await this.startExtract(this.selectedFile, true);
+    },
+
+    _loadQuality() {
+      fetch('/review/quality')
+        .then(r => r.json())
+        .then(q => { this.qualityData = (q.files && q.files.length > 0) ? q : null; });
+    },
+
+    _loadUnresolved() {
+      fetch('/review/unresolved')
+        .then(r => r.json())
+        .then(d => {
+          this.unresolvedEntries = d.entries || [];
+          this.unresolvedTotal   = d.total   || 0;
+        });
+    },
+
+    async startAgentRetry() {
+      if (!this.selectedFile || !this.agentRelType || this.agentRunning) return;
+      this.agentRunning = true;
+      Alpine.store('helms').agentRunning = true;
+      document.dispatchEvent(new CustomEvent('helms:step-started', { detail: { step: 'agent' } }));
+      this._agentToast = helmsToast('Smart Retry Running … ' + this.agentRelType, 'running', 0);
+      const logEl = document.getElementById('log-extract');
+      if (logEl) logEl.innerHTML = '';
+      const form = new FormData();
+      form.append('raw_path', this.selectedFile);
+      form.append('rel_type', this.agentRelType);
+      const res = await fetch('/step/retry-agent', { method: 'POST', body: form });
+      if (!res.ok) {
+        const txt = await res.text();
+        if (this._agentToast) { this._agentToast.dismiss(); this._agentToast = null; }
+        helmsToast('Agent retry: ' + txt.substring(0, 200), 'error');
+        this.agentRunning = false;
+        Alpine.store('helms').agentRunning = false;
+        document.dispatchEvent(new CustomEvent('helms:step-done', { detail: { step: 'agent', ok: false } }));
+        return;
+      }
+      const data = await res.json();
+      this.agentToken = data.token;
+      this._connectAgentSSE();
+    },
+
+    _connectAgentSSE() {
+      const logEl = document.getElementById('log-extract');
+      const es = new EventSource('/stream/' + this.agentToken);
+      es.onmessage = (e) => {
+        if (logEl) { logEl.innerHTML += e.data; logEl.scrollTop = logEl.scrollHeight; }
+      };
+      es.addEventListener('done', () => { es.close(); this._onAgentRetryDone(); });
+      es.onerror = () => {
+        if (es.readyState === EventSource.CLOSED) {
+          es.close();
+          this.agentRunning = false;
+          Alpine.store('helms').agentRunning = false;
+          document.dispatchEvent(new CustomEvent('helms:step-done', { detail: { step: 'agent', ok: false } }));
+          if (this._agentToast) { this._agentToast.dismiss(); this._agentToast = null; }
+          helmsToast('Agent Retry connection lost', 'error', 4000);
+        }
+      };
+    },
+
+    async _onAgentRetryDone() {
+      this.agentRunning = false;
+      Alpine.store('helms').agentRunning = false;
+      const d = await fetch('/runner-status/' + this.agentToken).then(r => r.json());
+      document.dispatchEvent(new CustomEvent('helms:step-done', { detail: { step: 'agent', ok: d.ok } }));
+      if (this._agentToast) { this._agentToast.dismiss(); this._agentToast = null; }
+      if (d.ok) {
+        helmsToast('🥷🏻 Smart Retry complete', 'success', 4000);
+        this._loadQuality();
+        this._loadUnresolved();
+        if (this.selectedFile) {
+          htmx.ajax('GET', '/review/load?path=' + encodeURIComponent(this.selectedFile), {
+            target: '#triple-editor', swap: 'innerHTML',
+          });
+        }
+      } else {
+        helmsToast('Agent retry failed', 'error', 3000);
+      }
+    },
+
+    onDone(evt) {
+      this.running = false;
+      this.done = true;
+      fetch('/runner-status/' + this.token)
+        .then(r => r.json())
+        .then(d => {
+          this.ok = d.ok;
+          setBadge('extract', d.ok ? 'done' : 'error');
+          document.dispatchEvent(new CustomEvent('helms:step-done', { detail: { step: 'extract', ok: d.ok } }));
+          if (d.ok) {
+            this._loadQuality();
+            this._loadUnresolved();
+            // Reload file list so newly extracted files appear
+            document.getElementById('review-files-container')
+              .dispatchEvent(new Event('reload-files', { bubbles: true }));
+            // Reload triple editor so new triples from this extract are visible
+            if (this.selectedFile) {
+              htmx.ajax('GET', '/review/load?path=' + encodeURIComponent(this.selectedFile), {
+                target: '#triple-editor',
+                swap: 'innerHTML',
+              });
+            }
+          }
+        });
+    },
+
+    // ── file selection ───────────────────────────────────────────────────────
+
+    onFileSelect(rawPath, revPath) {
+      this._doSwitch(rawPath, revPath);
+    },
+
+    _doSwitch(rawPath, revPath) {
+      this.selectedFile = rawPath;
+      this.rawPath = rawPath;
+      this.revPath = revPath;
+      Alpine.store('helms').dirty = false;
+      Alpine.store('helms').showAddForm = false;
+      const step2El = document.getElementById('step2');
+      if (step2El) step2El.dataset.selectedFile = rawPath;
+      const sel = document.querySelector('#review-files-container select');
+      if (sel) {
+        for (let i = 0; i < sel.options.length; i++) {
+          if (sel.options[i].value === rawPath) { sel.selectedIndex = i; break; }
+        }
+      }
+      const editor = document.getElementById('triple-editor');
+      if (editor) editor.addEventListener('htmx:responseError', () => {
+        helmsToast('Failed to load review file', 'error');
+      }, { once: true });
+      htmx.ajax('GET', '/review/load?path=' + encodeURIComponent(rawPath), {
+        target: '#triple-editor',
+        swap: 'innerHTML',
+      });
+    },
+
+    async _flushReview() {
+      if (!Alpine.store('helms').dirty || !this.rawPath) return;
+      try {
+        const triples = window._helmsTriples ? window._helmsTriples() : [];
+        const added   = window._helmsAddedTriples ? window._helmsAddedTriples() : [];
+        const hashEl  = document.getElementById('review-raw-hash');
+        const rawHash = hashEl ? hashEl.dataset.hash : '';
+        const res = await fetch('/review/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            raw_path: this.rawPath,
+            rev_path: this.revPath,
+            raw_hash: rawHash,
+            triples,
+            added_triples: added,
+          }),
+        });
+        if (res.status === 409) {
+          const d = await res.json();
+          helmsToast(d.error || 'Stale review — please reload', 'warn', 8000);
+          return;
+        }
+        if (res.ok) {
+          Alpine.store('helms').dirty = false;
+          const d = await res.json().catch(() => ({}));
+          const qw = (d && d.quote_warnings) || [];
+          if (qw.length) {
+            helmsToast(
+              qw.length + ' quote' + (qw.length > 1 ? 's' : '') +
+              ' not found verbatim in the document — kept the original. Edit must match the source text.',
+              'warn', 8000);
+          }
+          this._loadQuality();
+          return;
+        }
+        const d = await res.json().catch(() => ({}));
+        helmsToast(d.error || `Save failed (HTTP ${res.status})`, 'error', 8000);
+      } catch (e) {
+        helmsToast('Save failed: ' + (e?.message || e), 'error', 8000);
+        console.error('[helms] _flushReview failed:', e);
+      }
+    },
+
+    init() {
+      // Ctrl+S / Cmd+S → save review
+      document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 's' && Alpine.store('helms').dirty) {
+          e.preventDefault();
+          this.saveChanges();
+        }
+      });
+
+      // Restore quality panel and unresolved panel on page refresh
+      this._loadQuality();
+      this._loadUnresolved();
+
+      document.addEventListener('helms:agent-retry-rel', (e) => {
+        this.agentRelType = e.detail.relType;
+        this.startAgentRetry();
+      });
+
+
+      document.addEventListener('helms-run-selected', () => {
+        // Clear stale data from previous run
+        this.qualityData        = null;
+        this.unresolvedEntries  = [];
+        this.unresolvedTotal    = 0;
+        this.unresolvedOpen     = false;
+        this.selectedFile  = '';
+        this.rawPath       = '';
+        this.revPath       = '';
+        Alpine.store('helms').dirty = false;
+        Alpine.store('helms').agentRunning = false;
+        this.agentRunning  = false;
+        this.agentToken    = null;
+        // Also clear the DOM attr so autoSelect in the partial doesn't reuse a stale path
+        const step2El = document.getElementById('step2');
+        if (step2El) step2El.dataset.selectedFile = '';
+        const editor = document.getElementById('triple-editor');
+        if (editor) editor.innerHTML = '';
+        this._loadQuality();
+        this._loadUnresolved();
+
+        // hx-on:htmx:after-request fires AFTER the swap, so #review-files-container
+        // already has the new file list. Auto-select the first file immediately.
+        const sel = document.querySelector('#review-files-container select');
+        if (sel && sel.options.length > 0) {
+          const opt = sel.options[0];
+          if (opt && opt.value) {
+            sel.selectedIndex = 0;
+            this._doSwitch(opt.value, opt.dataset.rev);
+          }
+        }
+      });
+      document.addEventListener('helms:file-select', (e) => {
+        this.onFileSelect(e.detail.rawPath, e.detail.revPath);
+      });
+      document.addEventListener('helms:step-started', (e) => {
+        if (e.detail.step !== 'extract') return;
+        this.running = true;
+        this.done = false;
+        this.ok = null;
+        this.token = e.detail.token;
+        const logEl = document.getElementById('log-extract');
+        if (logEl) logEl.innerHTML = '';
+        this._connectSSE('log-extract');
+      });
+    },
+
+    // ── save ─────────────────────────────────────────────────────────────────
+
+    async saveChanges() {
+      const wasDirty = Alpine.store('helms').dirty;
+      await this._flushReview();
+      if (wasDirty && !Alpine.store('helms').dirty) helmsToast('Review saved', 'success');
+      if (!Alpine.store('helms').dirty && this.rawPath) {
+        htmx.ajax('GET', '/review/load?path=' + encodeURIComponent(this.rawPath), {
+          target: '#triple-editor',
+          swap: 'innerHTML',
+        });
+      }
+    },
+
+    discardChanges() {
+      Alpine.store('helms').dirty = false;
+      if (this.rawPath) {
+        htmx.ajax('GET', '/review/load?path=' + encodeURIComponent(this.rawPath), {
+          target: '#triple-editor',
+          swap: 'innerHTML',
+        });
+      }
+    },
+
+  };
+}
+</script>
+
+<!-- Evidence viewer modal — shows source .md with the triple's spans highlighted -->
+<div id="evidence-modal" class="fixed inset-0 z-[9998] hidden items-center justify-center bg-black/40 p-6"
+     onclick="if(event.target===this) helmsCloseEvidence()">
+  <div class="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+    <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-200">
+      <span class="text-sm font-semibold text-gray-700">📄 Evidence in source document</span>
+      <button onclick="helmsCloseEvidence()" class="text-gray-400 hover:text-gray-700 text-lg leading-none">✕</button>
+    </div>
+    <div id="evidence-body" class="overflow-y-auto p-4 flex-1"></div>
+  </div>
+</div>
+<script>
+  function helmsCloseEvidence() {
+    document.getElementById('evidence-modal').classList.add('hidden');
+    document.getElementById('evidence-modal').classList.remove('flex');
+  }
+  async function helmsShowEvidence(tripleId) {
+    const rawPath = (document.getElementById('step2') || {}).dataset?.selectedFile || '';
+    if (!rawPath) { helmsToast('Select a review file first', 'warn'); return; }
+    const body = document.getElementById('evidence-body');
+    body.innerHTML = '<p class="text-xs text-gray-400 italic">Loading…</p>';
+    const modal = document.getElementById('evidence-modal');
+    modal.classList.remove('hidden'); modal.classList.add('flex');
+    const res = await fetch('/review/evidence?raw_path=' + encodeURIComponent(rawPath)
+                           + '&triple_id=' + encodeURIComponent(tripleId));
+    body.innerHTML = await res.text();
+    const mark = document.getElementById('ev-first');
+    if (mark) mark.scrollIntoView({ block: 'center' });
+  }
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') helmsCloseEvidence(); });
+</script>
+
+<div class="flex justify-end items-center gap-3 mt-8 pt-4 border-t border-gray-100 text-sm select-none">
+  <button onclick="showStep('step1')" class="text-indigo-600 hover:text-indigo-800 font-medium transition-colors">Prev</button>
+  <span class="text-gray-300">|</span>
+  <button onclick="showStep('step3')" class="text-indigo-600 hover:text-indigo-800 font-medium transition-colors">Next</button>
+</div>

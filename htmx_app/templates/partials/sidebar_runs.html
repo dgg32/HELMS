@@ -1,0 +1,24 @@
+<div>
+  <div class="flex items-center justify-between mb-1">
+    <label class="text-xs font-medium text-gray-500">Run</label>
+    <button id="btn-open-finder"
+            onclick="fetch('/run/open-folder')"
+            class="text-xs text-gray-400 hover:text-gray-600 transition-colors leading-none"
+            title="Open run folder in Finder"
+            style="{% if not run_id or run_id == 'new' %}display:none{% endif %}">📂 Finder</button>
+  </div>
+  <select class="w-full border border-gray-200 rounded px-2 py-1.5 text-sm bg-white"
+          name="run_id"
+          hx-post="/select-run"
+          hx-target="#review-files-container"
+          hx-include="[name='run_id']"
+          hx-trigger="change"
+          hx-on:htmx:after-request="if(event.detail.successful) document.dispatchEvent(new CustomEvent('helms-run-selected'))"
+          onchange="document.getElementById('btn-open-finder').style.display = (this.value && this.value !== 'new') ? '' : 'none'">
+    <option value="new" {% if not run_id %}selected{% endif %}>— New run —</option>
+    {% for r in runs %}
+      {% set dot = {'new': '○', 'convert': '◑', 'extract': '◕', 'write': '●'}[r.status] %}
+      <option value="{{ r.run_id }}" {% if r.run_id == run_id %}selected{% endif %}>{{ dot }} {{ r.run_id }}</option>
+    {% endfor %}
+  </select>
+</div>

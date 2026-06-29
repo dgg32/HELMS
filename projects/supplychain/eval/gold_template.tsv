@@ -1,0 +1,7 @@
+rel_type	from_display	to_display	doc_name	notes
+PROVIDES	TSMC	Apple Inc.		example corpus-level (no doc_name)
+PROVIDES	Samsung Electronics	Nvidia Corporation	nvidia_report	section 3 suppliers
+PROVIDES	NVIDIA CORPORATION	AWS, L.L.C.	nvidia-gb200-supply-chain-the-global-ecosystem-explained	Current State.
+PROVIDES	NVIDIA CORPORATION	Microsoft	nvidia-gb200-supply-chain-the-global-ecosystem-explained	Current State.
+PROVIDES	NVIDIA CORPORATION	GOOGLE LLC	nvidia-gb200-supply-chain-the-global-ecosystem-explained	Current State.
+PROVIDES	NVIDIA CORPORATION	META	nvidia-gb200-supply-chain-the-global-ecosystem-explained	Current State.

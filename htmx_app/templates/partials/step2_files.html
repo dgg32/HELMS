@@ -1,0 +1,52 @@
+{% if review_files %}
+<select class="w-full border border-gray-200 rounded px-2 py-1.5 text-sm bg-white"
+        onchange="
+          const opt = this.options[this.selectedIndex];
+          if (!opt.value) return;
+          document.dispatchEvent(new CustomEvent('helms:file-select', {
+            detail: { rawPath: opt.value, revPath: opt.dataset.rev }
+          }));
+        ">
+  {% for f in review_files %}
+  <option value="{{ f }}"
+          data-rev="{{ f | replace('_raw.json', '_review.json') }}">
+    {{ triple_display_name(f) }}
+  </option>
+  {% endfor %}
+</select>
+<script>
+(function () {
+  function autoSelect() {
+    const sel = document.querySelector('#review-files-container select');
+    if (!sel || sel.options.length === 0) return;
+
+    // Read current selection from DOM attribute (set by onFileSelect) —
+    // more reliable than _x_dataStack which depends on Alpine internals.
+    const currentFile = document.getElementById('step2')?.dataset?.selectedFile;
+    if (currentFile) {
+      // Sync dropdown to show the already-selected file; don't reload triples.
+      for (let i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].value === currentFile) {
+          sel.selectedIndex = i;
+          return;
+        }
+      }
+      // Selected file not in list — fall through and pick first.
+    }
+
+    const opt = sel.options[0];
+    if (!opt.value) return;
+    document.dispatchEvent(new CustomEvent('helms:file-select', {
+      detail: { rawPath: opt.value, revPath: opt.dataset.rev }
+    }));
+  }
+  if (typeof Alpine !== 'undefined' && Alpine.nextTick) {
+    Alpine.nextTick(autoSelect);
+  } else {
+    document.addEventListener('alpine:initialized', autoSelect, { once: true });
+  }
+})();
+</script>
+{% else %}
+<p class="text-sm text-gray-400 italic">No extracted files yet — run Extract first.</p>
+{% endif %}

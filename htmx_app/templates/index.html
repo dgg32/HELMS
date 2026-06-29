@@ -1,0 +1,427 @@
+{% extends "base.html" %}
+
+{% block sidebar %}
+<div class="p-4 space-y-4 text-sm">
+
+  <!-- Project selection -->
+  <div>
+    <div class="flex items-center justify-between mb-1">
+      <label class="text-xs font-medium text-gray-500">Project</label>
+      <button onclick="document.dispatchEvent(new CustomEvent('helms-open-wizard'))"
+              class="text-xs text-indigo-600 hover:text-indigo-800 font-medium transition-colors leading-none"
+              title="Create new project">＋ New</button>
+    </div>
+    <select class="w-full border border-gray-200 rounded px-2 py-1.5 text-sm bg-white"
+            name="project"
+            hx-post="/select-project"
+            hx-target="#sidebar-runs"
+            hx-include="[name='project']"
+            hx-trigger="change">
+      {% for p in projects %}
+        <option value="{{ p }}" {% if p == selected_project %}selected{% endif %}>{{ p }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- Run selection -->
+  <div id="sidebar-runs">
+    {% include "partials/sidebar_runs.html" %}
+  </div>
+
+  <hr class="border-gray-100"/>
+
+  <!-- Metadata link -->
+  <button onclick="showStep('meta')" data-step-btn="meta"
+          class="w-full text-left px-2 py-1.5 rounded-lg hover:bg-gray-50 flex items-center gap-2 text-xs font-medium text-gray-500 uppercase tracking-wide transition-colors">
+    📝 Metadata
+  </button>
+
+  <!-- Schema link -->
+  <button onclick="showStep('schema')" data-step-btn="schema"
+          class="w-full text-left px-2 py-1.5 rounded-lg hover:bg-gray-50 flex items-center gap-2 text-xs font-medium text-gray-500 uppercase tracking-wide transition-colors">
+    📋 Schema
+  </button>
+
+  <hr class="border-gray-100"/>
+
+  <!-- Combined pipeline steps + run -->
+  <div x-data="pipeline()">
+    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Pipeline</p>
+
+    <!-- Step 1: Convert -->
+    <div class="flex items-center gap-2 mb-1">
+      <div class="w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold transition-all duration-300"
+           :class="{
+             'bg-indigo-200 text-indigo-700 ring-2 ring-indigo-400': stepStatus.convert === 'idle',
+             'bg-indigo-500 text-white ring-2 ring-indigo-200 animate-pulse': stepStatus.convert === 'running',
+             'bg-green-500 text-white': stepStatus.convert === 'done',
+             'bg-red-500 text-white': stepStatus.convert === 'error'
+           }">
+        <span x-show="stepStatus.convert === 'done'">✓</span>
+        <span x-show="stepStatus.convert === 'error'">✕</span>
+        <span x-show="stepStatus.convert !== 'done' && stepStatus.convert !== 'error'">1</span>
+      </div>
+      <button onclick="showStep('step1')" data-step-btn="step1"
+              class="flex-1 text-left px-3 py-2 bg-white border border-gray-300 rounded-lg shadow-sm hover:border-blue-400 hover:shadow-md transition-all">
+        <div class="text-sm font-medium">🪓 Convert</div>
+        <div class="text-[11px] text-gray-400 font-normal leading-tight">PDF → Markdown</div>
+      </button>
+    </div>
+    <div class="flex gap-2 my-0.5">
+      <span class="w-6 shrink-0 flex justify-center">
+        <span class="text-gray-300 text-lg leading-none">│</span>
+      </span>
+    </div>
+
+    <!-- Step 2: Extract -->
+    <div class="flex items-center gap-2 mb-1">
+      <div class="w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold transition-all duration-300"
+           :class="{
+             'bg-indigo-200 text-indigo-700 ring-2 ring-indigo-400': stepStatus.extract === 'idle',
+             'bg-indigo-500 text-white ring-2 ring-indigo-200 animate-pulse': stepStatus.extract === 'running',
+             'bg-green-500 text-white': stepStatus.extract === 'done',
+             'bg-red-500 text-white': stepStatus.extract === 'error'
+           }">
+        <span x-show="stepStatus.extract === 'done'">✓</span>
+        <span x-show="stepStatus.extract === 'error'">✕</span>
+        <span x-show="stepStatus.extract !== 'done' && stepStatus.extract !== 'error'">2</span>
+      </div>
+      <button onclick="showStep('step2')" data-step-btn="step2"
+              class="flex-1 text-left px-3 py-2 bg-white border border-gray-300 rounded-lg shadow-sm hover:border-blue-400 hover:shadow-md transition-all">
+        <div class="text-sm font-medium">🦅 Extract</div>
+        <div class="text-[11px] text-gray-400 font-normal leading-tight">Extract triples</div>
+      </button>
+    </div>
+    <div class="flex items-center gap-2 my-0.5">
+      <span class="w-6 shrink-0 flex justify-center">
+        <span class="text-gray-300 text-lg leading-none">│</span>
+      </span>
+      <button onclick="showStep('step2')" class="text-blue-500 hover:text-blue-700 text-[10px] whitespace-nowrap underline-offset-2 hover:underline transition-colors">review</button>
+    </div>
+
+    <!-- Step 3: Write (optional — circle toggles inclusion) -->
+    <div class="flex items-center gap-2 mb-3">
+      <div @click="steps.write = !steps.write"
+           class="w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold cursor-pointer transition-all duration-300"
+           :class="{
+             'border-2 border-dashed border-gray-300 bg-white text-gray-400': !steps.write,
+             'bg-indigo-100 text-indigo-600 ring-2 ring-indigo-300': steps.write && stepStatus.write === 'idle',
+             'bg-indigo-500 text-white ring-2 ring-indigo-200 animate-pulse': steps.write && stepStatus.write === 'running',
+             'bg-green-500 text-white': steps.write && stepStatus.write === 'done',
+             'bg-red-500 text-white': steps.write && stepStatus.write === 'error'
+           }"
+           title="Toggle Write step">
+        <span x-show="steps.write && stepStatus.write === 'done'">✓</span>
+        <span x-show="steps.write && stepStatus.write === 'error'">✕</span>
+        <span x-show="!(steps.write && stepStatus.write === 'done') && !(steps.write && stepStatus.write === 'error')">3</span>
+      </div>
+      <button onclick="showStep('step3')" data-step-btn="step3"
+              :class="steps.write ? '' : 'opacity-50'"
+              class="flex-1 text-left px-3 py-2 bg-white border border-gray-300 rounded-lg shadow-sm hover:border-blue-400 hover:shadow-md transition-all">
+        <div class="text-sm font-medium">✍️ Write</div>
+        <div class="text-[11px] text-gray-400 font-normal leading-tight">Write to graph</div>
+      </button>
+    </div>
+
+    <button @click="runPipeline()"
+            :disabled="running"
+            class="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors">
+      <span x-show="!running" x-text="'▶ Run Steps 1 + 2' + (steps.write ? ' + 3' : '')"></span>
+      <span class="flex items-center justify-center gap-1.5" :class="{'hidden': !running}">
+        <svg viewBox="92 42 496 496" width="18" height="18" class="helms-wheel-spin"><g transform="translate(340,290)"><circle r="210" fill="none" stroke="#fff" stroke-width="22"/><line x1="0" y1="-210" x2="0" y2="-72" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="0" y1="210" x2="0" y2="72" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="-210" y1="0" x2="-72" y2="0" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="210" y1="0" x2="72" y2="0" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="-148" y1="-148" x2="-51" y2="-51" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="148" y1="148" x2="51" y2="51" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="148" y1="-148" x2="51" y2="-51" stroke="#fff" stroke-width="14" stroke-linecap="round"/><line x1="-148" y1="148" x2="-51" y2="51" stroke="#fff" stroke-width="14" stroke-linecap="round"/><ellipse cx="0" cy="-222" rx="13" ry="26" fill="#fff"/><ellipse cx="0" cy="222" rx="13" ry="26" fill="#fff"/><ellipse cx="-222" cy="0" rx="26" ry="13" fill="#fff"/><ellipse cx="222" cy="0" rx="26" ry="13" fill="#fff"/><ellipse cx="-157" cy="-157" rx="13" ry="26" transform="rotate(-45,-157,-157)" fill="#fff"/><ellipse cx="157" cy="157" rx="13" ry="26" transform="rotate(-45,157,157)" fill="#fff"/><ellipse cx="157" cy="-157" rx="13" ry="26" transform="rotate(45,157,-157)" fill="#fff"/><ellipse cx="-157" cy="157" rx="13" ry="26" transform="rotate(45,-157,157)" fill="#fff"/><circle r="72" fill="rgba(255,255,255,0.2)"/><circle r="56" fill="rgba(255,255,255,0.4)"/></g></svg>
+        <span x-text="currentStep + '…'"></span>
+      </span>
+    </button>
+    <label class="flex items-center gap-2 text-xs cursor-pointer text-gray-500 mt-2 pl-1">
+      <input type="checkbox" x-model="force" class="rounded"/> Force re-run
+    </label>
+    <div class="mt-1.5 text-xs text-center h-4">
+      <span x-show="pipeStatus === 'done'" class="text-green-600 font-medium">✓ Pipeline complete</span>
+      <span x-show="pipeStatus === 'error'" class="text-red-600 font-medium">✗ Failed at <span x-text="currentStep"></span></span>
+    </div>
+  </div>
+
+
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Project creation wizard modal -->
+<div x-data="projectWizard()"
+     x-show="open"
+     x-cloak
+     x-on:helms-open-wizard.document="show()"
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+     @click.self="open = false"
+     @keydown.escape.window="open = false">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6 space-y-5">
+    <div class="flex items-center justify-between">
+      <h2 class="text-lg font-semibold">New Project</h2>
+      <button @click="open = false" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+    </div>
+
+    <div class="space-y-4">
+      <div class="space-y-1.5">
+        <label class="text-sm font-medium text-gray-700">Project name</label>
+        <input x-model="name" type="text"
+               class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+               placeholder="my-project"
+               @keydown.enter="create()"
+               x-ref="nameInput"/>
+        <p class="text-xs text-gray-400">Letters, digits, hyphens, underscores. No spaces.</p>
+      </div>
+
+      <div class="space-y-1.5">
+        <label class="text-sm font-medium text-gray-700">Schema template</label>
+        <select x-model="template"
+                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400">
+          <template x-for="t in templates" :key="t.name">
+            <option :value="t.name" x-text="t.label"></option>
+          </template>
+        </select>
+        <p class="text-xs text-gray-400">Copies schema.yaml only. Structural fields (nodes, properties, relationships) must be edited in the YAML file directly after creation.</p>
+      </div>
+
+      <div x-show="error" class="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700" x-text="error"></div>
+    </div>
+
+    <div class="flex justify-end gap-3 pt-1">
+      <button @click="open = false"
+              class="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 transition-colors">
+        Cancel
+      </button>
+      <button @click="create()"
+              :disabled="creating || !name.trim()"
+              class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors">
+        <span x-show="!creating">Create project</span>
+        <span x-show="creating">Creating…</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Step panels: only one visible at a time -->
+<div id="step1" class="step-panel">{% include "partials/step1.html" %}</div>
+<div id="step2" class="step-panel hidden">{% include "partials/step2.html" %}</div>
+<div id="step3" class="step-panel hidden">{% include "partials/step3.html" %}</div>
+<div id="schema" class="step-panel hidden">{% include "partials/schema_editor.html" %}</div>
+<div id="meta" class="step-panel hidden">{% include "partials/meta_editor.html" %}</div>
+
+<script>
+  function showStep(id) {
+    document.querySelectorAll('.step-panel').forEach(el => el.classList.add('hidden'));
+    document.getElementById(id).classList.remove('hidden');
+    document.querySelectorAll('[data-step-btn]').forEach(btn => {
+      btn.classList.remove('!bg-blue-50', '!border-blue-400', '!text-blue-700', 'bg-blue-50', 'text-blue-600');
+    });
+    const active = document.querySelector('[data-step-btn="' + id + '"]');
+    if (active) {
+      const hasBorder = active.classList.contains('border');
+      active.classList.add(hasBorder ? '!bg-blue-50' : 'bg-blue-50');
+      if (hasBorder) active.classList.add('!border-blue-400', '!text-blue-700');
+      else active.classList.add('text-blue-600');
+    }
+    // Persist active panel in URL hash (no page reload)
+    if (history.replaceState) history.replaceState(null, '', '#' + id);
+    // Auto-load graph summary when entering step3
+    if (id === 'step3') {
+      const panel = document.getElementById('graph-summary-panel');
+      if (panel && !panel.children.length) {
+        htmx.ajax('GET', '/graph/summary', { target: '#graph-summary-panel', swap: 'innerHTML' });
+      }
+    }
+  }
+  // Restore panel from URL hash on load
+  showStep((location.hash.slice(1) || 'step1'));
+
+  // On page load: reflect step completion status for the already-selected run
+  document.addEventListener('alpine:initialized', async () => {
+    try {
+      const r = await fetch('/run/step-status');
+      const status = await r.json();
+      for (const [step, st] of Object.entries(status)) {
+        if (st !== 'idle') setBadge(step, st);
+      }
+    } catch {}
+  });
+
+  function setBadge(step, status) {
+    document.dispatchEvent(new CustomEvent('helms:badge-update', { detail: { step, status } }));
+  }
+
+  // On project change: clear stale review files then fire helms-run-selected so step2
+  // resets without auto-selecting files from the previous project.
+  document.addEventListener('htmx:afterRequest', (e) => {
+    if (e.detail.xhr && e.detail.xhr.getResponseHeader('HX-Trigger') === 'helms-project-changed') {
+      const fc = document.getElementById('review-files-container');
+      if (fc) fc.innerHTML = '';
+      document.dispatchEvent(new CustomEvent('helms-run-selected'));
+    }
+  });
+
+  // On run switch: reset badges and reflect completed steps for the selected run
+  document.addEventListener('helms-run-selected', async () => {
+    const panel = document.getElementById('graph-summary-panel');
+    if (panel) panel.innerHTML = '';
+    ['convert', 'extract', 'write'].forEach(s => setBadge(s, 'idle'));
+    try {
+      const r = await fetch('/run/step-status');
+      const status = await r.json();
+      for (const [step, st] of Object.entries(status)) {
+        if (st !== 'idle') setBadge(step, st);
+      }
+    } catch {}
+  });
+
+  // Update badge + refresh sidebar + review files after each step completes
+  document.addEventListener('helms:step-done', (e) => {
+    const { step, ok } = e.detail;
+    // Agent retry reuses step-started/step-done only to drive the tab-title
+    // indicator (base.html). It creates no run and has no pipeline badge, so skip
+    // the badge update + sidebar refresh here.
+    if (step === 'agent') return;
+    setBadge(step, ok ? 'done' : 'error');
+    // Refresh run dropdown in case a new run was created
+    htmx.ajax('GET', '/sidebar/runs', { target: '#sidebar-runs', swap: 'innerHTML' });
+    if (step === 'extract' && ok) {
+      htmx.trigger('#review-files-container', 'reload-files');
+    }
+  });
+
+  function projectWizard() {
+    return {
+      open: false,
+      name: '',
+      template: 'blank',
+      templates: [],
+      creating: false,
+      error: '',
+
+      async show() {
+        this.name = '';
+        this.error = '';
+        this.creating = false;
+        if (!this.templates.length) {
+          try {
+            const res = await fetch('/project/templates');
+            const data = await res.json();
+            this.templates = data.templates || [];
+          } catch (_) {}
+        }
+        if (this.templates.length) this.template = this.templates[0].name;
+        this.open = true;
+        this.$nextTick(() => this.$refs.nameInput && this.$refs.nameInput.focus());
+      },
+
+      async create() {
+        if (!this.name.trim() || this.creating) return;
+        this.creating = true;
+        this.error = '';
+        try {
+          const res = await fetch('/project/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: this.name.trim(), template: this.template }),
+          });
+          const data = await res.json();
+          if (!res.ok || data.error) {
+            this.error = data.error || 'Unknown error';
+            this.creating = false;
+            return;
+          }
+          // Reload page — project dropdown is server-rendered and needs a full refresh
+          window.location.href = '/';
+        } catch (e) {
+          this.error = 'Request failed: ' + e.message;
+          this.creating = false;
+        }
+      },
+    };
+  }
+
+  function pipeline() {
+    return {
+      steps: { write: false },   // convert + extract always run; write is optional
+      force: false,
+      running: false,
+      currentStep: '',
+      pipeStatus: '',
+      stepStatus: { convert: 'idle', extract: 'idle', write: 'idle' },
+
+      init() {
+        document.addEventListener('helms:badge-update', (e) => {
+          const { step, status } = e.detail;
+          if (step in this.stepStatus) this.stepStatus[step] = status;
+          if (step === 'write') this.steps.write = (status !== 'idle');
+        });
+      },
+
+      async runPipeline() {
+        this.running = true;
+        this.pipeStatus = '';
+
+        const plan = [
+          { key: 'convert', endpoint: '/step/convert', stepId: 'step1', label: 'Convert' },
+          { key: 'extract', endpoint: '/step/extract', stepId: 'step2', label: 'Extract' },
+          ...(this.steps.write ? [{ key: 'write', endpoint: '/step/write', stepId: 'step3', label: 'Write' }] : []),
+        ];
+
+        for (const step of plan) {
+          this.currentStep = step.label;
+          showStep(step.stepId);
+          setBadge(step.key, 'running');
+
+          const form = new FormData();
+          if (step.key !== 'write') form.append('force', this.force);
+
+          let data;
+          try {
+            const res = await fetch(step.endpoint, { method: 'POST', body: form });
+            data = await res.json();
+          } catch {
+            this._fail(); return;
+          }
+
+          if (data.error) {
+            helmsToast(step.label + ': ' + data.error, 'error');
+            setBadge(step.key, 'error');
+            this._fail(); return;
+          }
+
+          // Refresh run dropdown (ensure_run_folder() may have just created a new run)
+          htmx.ajax('GET', '/sidebar/runs', { target: '#sidebar-runs', swap: 'innerHTML' });
+
+          // Let the step component pick up the token and stream logs
+          document.dispatchEvent(new CustomEvent('helms:step-started', {
+            detail: { step: step.key, token: data.token },
+          }));
+
+          // Wait for step component to emit helms:step-done
+          const ok = await this._waitForStep(step.key);
+          if (!ok) { this._fail(); return; }
+        }
+
+        this.running = false;
+        this.pipeStatus = 'done';
+        this.currentStep = '';
+      },
+
+      _fail() {
+        this.running = false;
+        this.pipeStatus = 'error';
+      },
+
+      _waitForStep(key) {
+        return new Promise((resolve) => {
+          const handler = (e) => {
+            if (e.detail.step !== key) return;
+            document.removeEventListener('helms:step-done', handler);
+            resolve(e.detail.ok);
+          };
+          document.addEventListener('helms:step-done', handler);
+        });
+      },
+    };
+  }
+</script>
+{% endblock %}

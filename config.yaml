@@ -1,0 +1,15 @@
+# HELMS configuration
+# Values here override .env (shell env vars still take highest priority).
+# ALL_CAPS keys are exported as env vars; lowercase keys are app-only config.
+
+# LLM models shown in the sidebar dropdown (first entry is the default)
+models:
+  - gpt-5.4-mini
+  - gpt-4o
+  - gpt-4o-mini
+
+# Uncomment to override .env values:
+# LLM_MODEL: gpt-4o
+# LLM_MAX_COMPLETION_TOKENS: 8192
+# LLM_REASONING_EFFORT: low
+# LLM_TIMEOUT: 120

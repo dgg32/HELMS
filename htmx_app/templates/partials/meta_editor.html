@@ -1,0 +1,151 @@
+<div x-data="metaEditor()" class="w-full space-y-6">
+  <div class="flex items-center justify-between">
+    <div>
+      <h2 class="text-xl font-semibold">Metadata &amp; Config</h2>
+      <p class="text-sm text-gray-500 mt-1">Extraction instructions and per-PDF page filters for the current project.</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <span x-show="saveMsg" x-text="saveMsg"
+            :class="saveError ? 'text-red-600' : 'text-green-600'"
+            class="text-sm font-medium"></span>
+      <button @click="saveMeta()" :disabled="saving"
+              class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors">
+        <span x-show="!saving">💾 Save metadata</span>
+        <span x-show="saving">Saving…</span>
+      </button>
+    </div>
+  </div>
+
+  <div x-show="loadError" class="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700" x-text="loadError"></div>
+
+  <!-- Extraction instructions -->
+  <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-5 space-y-2">
+    <div>
+      <h3 class="text-sm font-semibold text-gray-800">Extraction instructions</h3>
+      <p class="text-xs text-gray-400 mt-0.5">Injected into the LLM system prompt for every document in this project.</p>
+    </div>
+    <textarea x-model="instructions" rows="6"
+              class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 resize-y font-mono"
+              placeholder="e.g. Extract triples for the PRIMARY substance described in the document only. Do NOT extract comparator drugs or placebos."></textarea>
+  </div>
+
+  <!-- Per-PDF page filters -->
+  <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+    <div class="px-5 py-3 bg-gray-50 border-b border-gray-200">
+      <h3 class="text-sm font-semibold text-gray-800">Per-PDF page filters</h3>
+      <p class="text-xs text-gray-400 mt-0.5">Key = PDF filename without <code class="bg-gray-100 px-1 rounded">.pdf</code>. Include/exclude ranges: comma-separated pages or ranges like <code class="bg-gray-100 px-1 rounded">1-10, 12</code>.</p>
+    </div>
+
+    <div class="p-5 space-y-3">
+      <!-- Column headers -->
+      <template x-if="Object.keys(pages).length > 0">
+        <div class="grid grid-cols-[1fr_1fr_1fr_2rem] gap-3 items-center">
+          <p class="text-xs font-medium text-gray-500">PDF stem</p>
+          <p class="text-xs font-medium text-gray-500">Include pages</p>
+          <p class="text-xs font-medium text-gray-500">Exclude pages</p>
+          <span></span>
+        </div>
+      </template>
+
+      <!-- Rows -->
+      <template x-for="(entry, stem) in pages" :key="stem">
+        <div class="grid grid-cols-[1fr_1fr_1fr_2rem] gap-3 items-center">
+          <span class="font-mono text-sm text-gray-700 truncate" x-text="stem"></span>
+          <input type="text" x-model="pages[stem].include" placeholder="1-10, 12"
+                 class="border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"/>
+          <input type="text" x-model="pages[stem].exclude" placeholder="5, 15"
+                 class="border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"/>
+          <button @click="deleteStem(stem)"
+                  class="text-gray-300 hover:text-red-500 transition-colors text-lg leading-none" title="Remove">×</button>
+        </div>
+      </template>
+
+      <p x-show="Object.keys(pages).length === 0" class="text-sm text-gray-400 italic">No page filters defined.</p>
+
+      <!-- Add row -->
+      <div class="flex items-center gap-3 pt-2 border-t border-gray-100">
+        <input type="text" x-model="newStem" placeholder="Add PDF stem (e.g. beyfortus label)"
+               class="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"
+               @keydown.enter="addStem()"/>
+        <button @click="addStem()" :disabled="!newStem.trim()"
+                class="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors">
+          + Add
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function metaEditor() {
+  return {
+    instructions: '',
+    pages: {},
+    newStem: '',
+    saving: false,
+    saveMsg: '',
+    saveError: false,
+    loadError: '',
+
+    async _loadMeta() {
+      this.loadError = '';
+      try {
+        const res = await fetch('/meta/load');
+        const data = await res.json();
+        if (data.error) { this.loadError = data.error; return; }
+        this.instructions = data.instructions || '';
+        this.pages = data.pages || {};
+      } catch {
+        this.loadError = 'Failed to load meta.yaml';
+      }
+    },
+
+    async init() {
+      await this._loadMeta();
+      document.addEventListener('htmx:afterRequest', (e) => {
+        if (e.detail.xhr && e.detail.xhr.getResponseHeader('HX-Trigger') === 'helms-project-changed') {
+          this._loadMeta();
+        }
+      });
+    },
+
+    addStem() {
+      const s = this.newStem.trim();
+      if (!s || s in this.pages) return;
+      this.pages = { ...this.pages, [s]: { include: '', exclude: '' } };
+      this.newStem = '';
+    },
+
+    deleteStem(stem) {
+      const p = { ...this.pages };
+      delete p[stem];
+      this.pages = p;
+    },
+
+    async saveMeta() {
+      this.saving = true;
+      this.saveMsg = '';
+      this.saveError = false;
+      try {
+        const res = await fetch('/meta/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ instructions: this.instructions, pages: this.pages }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          this.saveMsg = 'Saved ✓';
+        } else {
+          this.saveError = true;
+          this.saveMsg = data.error || 'Save failed';
+        }
+      } catch {
+        this.saveError = true;
+        this.saveMsg = 'Save failed';
+      }
+      this.saving = false;
+      setTimeout(() => { this.saveMsg = ''; }, 3000);
+    },
+  };
+}
+</script>

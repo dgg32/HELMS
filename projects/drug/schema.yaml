@@ -1,0 +1,324 @@
+# ── Node definitions ──────────────────────────────────────────────────────────
+# Each property declares its source:
+#   source: umls     → value is populated by a UMLS lookup; the LLM only provides
+#                      the search term (from_field / to_field in the relationship).
+#                      The script will skip the triple if UMLS returns no match.
+#   source: llm      → value is extracted directly by the LLM and stored as-is.
+#                      Mark optional: true if the field may be absent in some labels.
+#   source: pipeline → value is auto-populated by the pipeline (no LLM, no API).
+#                      Use pipeline_field to name the context key:
+#                        pipeline_field: doc_path  → absolute path of the source document
+#
+# Every node table must have exactly one primary_key property.
+#
+# sem_group: UMLS semantic group name (e.g. "Physiology", "Disorders") or abbreviation
+#   (e.g. "PHYS", "DISO"). All TUIs in the group are passed as semanticTypes= to the
+#   UMLS API for server-side filtering. Client-side candidate check retained as safety net.
+#   Optional — omit to accept any semantic type.
+#
+# semantic_types: List of specific UMLS semantic type names (e.g. ["Molecular Function"])
+#   or TUI codes (e.g. ["T044"]). When present, takes precedence over sem_group for TUI
+#   filtering — only candidates matching one of these types are accepted. Use to tighten
+#   a broad sem_group to a specific type within it.
+#   Optional — omit to use sem_group (or accept any type if sem_group also absent).
+#
+# umls_vocabs: List of UMLS source vocabulary abbreviations to restrict lookups.
+#   e.g. ["MED-RT"] limits MOA lookups to the MED-RT pharmacology vocabulary,
+#   preventing general drug names (in RXNORM) from matching as mechanisms.
+#   Optional — omit to search all vocabularies.
+
+nodes:
+  Substance:
+    description: "Generic or INN drug substance. Examples: nirsevimab, palivizumab, ibuprofen, acetaminophen."
+    sem_group: "Chemicals & Drugs"
+    semantic_types:
+      - "Amino Acid, Peptide, or Protein"
+      - "Antibiotic"
+      - "Biologically Active Substance"
+      - "Biomedical or Dental Material"
+      - "Chemical"
+      - "Chemical Viewed Functionally"
+      - "Chemical Viewed Structurally"
+      - "Clinical Drug"
+      - "Element, Ion, or Isotope"
+      - "Enzyme"
+      - "Hazardous or Poisonous Substance"
+      - "Hormone"
+      - "Immunologic Factor"
+      - "Indicator, Reagent, or Diagnostic Aid"
+      - "Inorganic Chemical"
+      - "Nucleic Acid, Nucleoside, or Nucleotide"
+      - "Organic Chemical"
+      - "Pharmacologic Substance"
+      - "Receptor"
+      - "Vitamin"
+    umls_vocabs:
+      - "RXNORM"
+      - "MSH"
+      - "DRUGBANK"
+      - "SNOMEDCT_US"
+      - "ATC"
+    properties:
+      - name: cui
+        type: STRING
+        source: umls
+        primary_key: true
+      - name: name
+        type: STRING
+        source: umls
+      - name: semantic_types
+        type: STRING[]
+        source: umls
+        optional: true
+
+  Tradename:
+    description: "Brand or commercial name for a drug substance. Examples: Beyfortus, Synagis, Advil, Tylenol."
+    sem_group: "Chemicals & Drugs"
+    semantic_types:
+      - "Amino Acid, Peptide, or Protein"
+      - "Antibiotic"
+      - "Biologically Active Substance"
+      - "Biomedical or Dental Material"
+      - "Chemical"
+      - "Chemical Viewed Functionally"
+      - "Chemical Viewed Structurally"
+      - "Clinical Drug"
+      - "Element, Ion, or Isotope"
+      - "Enzyme"
+      - "Hazardous or Poisonous Substance"
+      - "Hormone"
+      - "Immunologic Factor"
+      - "Indicator, Reagent, or Diagnostic Aid"
+      - "Inorganic Chemical"
+      - "Nucleic Acid, Nucleoside, or Nucleotide"
+      - "Organic Chemical"
+      - "Pharmacologic Substance"
+      - "Receptor"
+      - "Vitamin"
+    umls_vocabs:
+      - "RXNORM"
+      - "MSH"
+    properties:
+      - name: cui
+        type: STRING
+        source: umls
+        primary_key: true
+      - name: name
+        type: STRING
+        source: umls
+      - name: semantic_types
+        type: STRING[]
+        source: umls
+        optional: true
+
+  Indication:
+    description: "Disease or medical condition the drug is approved or used to treat or prevent. Examples: RSV lower respiratory tract infection, heart failure, seasonal allergies."
+    sem_group: "Disorders"
+    semantic_types:
+      - "Acquired Abnormality"
+      - "Anatomical Abnormality"
+      - "Cell or Molecular Dysfunction"
+      - "Congenital Abnormality"
+      - "Disease or Syndrome"
+      - "Experimental Model of Disease"
+      - "Finding"
+      - "Injury or Poisoning"
+      - "Mental or Behavioral Dysfunction"
+      - "Neoplastic Process"
+      - "Pathologic Function"
+      - "Sign or Symptom"
+    umls_vocabs:
+      - "MSH"
+      - "SNOMEDCT_US"
+      - "HPO"
+    properties:
+      - name: cui
+        type: STRING
+        source: umls
+        primary_key: true
+      - name: name
+        type: STRING
+        source: umls
+      - name: semantic_types
+        type: STRING[]
+        source: umls
+        optional: true
+
+  MOA:
+    description: "Mechanism of action describing how the drug works at molecular or cellular level. Examples: Programmed Death Receptor-1-directed Antibody Interactions, CD30-directed Antibody Interactions, PCSK9 Inhibitors, SLAMF7-directed Antibody Interactions."
+    sem_group: "Physiology"
+    semantic_types:
+      - "Molecular Function"
+    umls_vocabs:
+      - "MED-RT"
+    properties:
+      - name: cui
+        type: STRING
+        source: umls
+        primary_key: true
+      - name: name
+        type: STRING
+        source: umls
+      - name: semantic_types
+        type: STRING[]
+        source: umls
+        optional: true
+
+  AdverseEffect:
+    description: "Harmful or undesired bodily effect caused by the drug in HUMANS. Don't extract adverse effects observed only in other animals such as mice and not in humans. If there is no evidence that it also appears in humans, drop it. Examples: injection site redness, fever, rash, anaphylaxis, liver damage, nausea."
+    sem_group: "Disorders"
+    semantic_types:
+      - "Acquired Abnormality"
+      - "Anatomical Abnormality"
+      - "Cell or Molecular Dysfunction"
+      - "Congenital Abnormality"
+      - "Disease or Syndrome"
+      - "Experimental Model of Disease"
+      - "Finding"
+      - "Injury or Poisoning"
+      - "Mental or Behavioral Dysfunction"
+      - "Neoplastic Process"
+      - "Pathologic Function"
+      - "Sign or Symptom"
+    umls_vocabs:
+      - "MSH"
+      - "SNOMEDCT_US"
+      - "HPO"
+    properties:
+      - name: cui
+        type: STRING
+        source: umls
+        primary_key: true
+      - name: name
+        type: STRING
+        source: umls
+      - name: semantic_types
+        type: STRING[]
+        source: umls
+        optional: true
+
+
+# ── Relationship definitions ───────────────────────────────────────────────────
+# from_node / to_node must match a key defined in nodes: above.
+# from_field / to_field are the LLM output field names used as UMLS search terms.
+#
+# Relationships support an optional 'properties' block for LLM-extracted
+# edge-level attributes (only source: llm is meaningful here).
+
+relationships:
+
+  - rel_type: HAS_TRADENAME
+    from_node: Substance
+    from_field: substance_name
+    from_hint: "generic/INN drug name"
+    to_node: Tradename
+    to_field: tradename
+    to_hint: "brand/trade name of the substance of the from_node"
+    extract_prompt: >
+      Every (substance_name, tradename) pair — use the INN/generic name as
+      substance_name and the brand name as tradename.
+    properties:
+      - name: source
+        type: STRING
+        source: pipeline
+        pipeline_field: doc_path
+      - name: publication_date
+        type: STRING
+        source: llm
+        hint: "publication date of the source article in ISO 8601 format (e.g. 2026-03-16). Extract from the article header or dateline."
+        optional: true
+    examples:
+      - substance_name: "nirsevimab"
+        tradename: "Beyfortus"
+      - substance_name: "pembrolizumab"
+        tradename: "Keytruda"
+
+
+  - rel_type: MAY_TREAT
+    from_node: Substance
+    from_field: substance_name
+    from_hint: "generic/INN drug name"
+    to_node: Indication
+    to_field: indication
+    to_hint: "disease or condition name using standard medical terminology that the 'from_node' drug substance may treat"
+    extract_prompt: >
+      Every (substance_name, indication) pair — diseases or conditions
+      the drug may treat or prevent.
+    examples:
+      - substance_name: "nirsevimab"
+        indication: "RSV lower respiratory tract infection"
+      - substance_name: "palivizumab"
+        indication: "respiratory syncytial virus disease"
+    properties:
+      - name: source
+        type: STRING
+        source: pipeline
+        pipeline_field: doc_path
+      - name: publication_date
+        type: STRING
+        source: llm
+        hint: "publication date of the source article in ISO 8601 format (e.g. 2026-03-16). Extract from the article header or dateline."
+        optional: true
+
+  - rel_type: HAS_MECHANISM_OF_ACTION
+    from_node: Substance
+    from_field: substance_name
+    from_hint: "generic/INN drug name"
+    to_node: MOA
+    to_field: mechanism
+    to_hint: >
+      canonical pharmacological class or receptor-level mechanism name of the 'from_node' substance — NOT a description of
+      downstream physiological effects. Use the drug class or mechanism name as it would appear
+      in a pharmacology reference (e.g. 'GLP-1 receptor agonist', 'RSV F protein inhibitor',
+      'PCSK9 inhibitor', 'PD-1 inhibitor'). Do NOT use effect phrases like 'stimulates insulin
+      secretion' or 'lowers blood glucose'.
+    extract_prompt: >
+      Every (substance_name, mechanism) pair — the canonical pharmacological mechanism or drug
+      class (receptor target, enzyme inhibitor class, etc.), NOT a description of downstream
+      physiological or clinical effects.
+    examples:
+      - substance_name: "nirsevimab"
+        mechanism: "RSV F protein inhibitor"
+      - substance_name: "pembrolizumab"
+        mechanism: "Programmed Death Receptor-1-directed Antibody Interactions"
+      - substance_name: "semaglutide"
+        mechanism: "GLP-1 receptor agonist"
+    properties:
+      - name: source
+        type: STRING
+        source: pipeline
+        pipeline_field: doc_path
+      - name: publication_date
+        type: STRING
+        source: llm
+        hint: "publication date of the source article in ISO 8601 format (e.g. 2026-03-16). Extract from the article header or dateline."
+        optional: true
+
+  - rel_type: HAS_ADVERSE_EFFECT
+    from_node: Substance
+    from_field: substance_name
+    from_hint: "generic/INN drug name"
+    to_node: AdverseEffect
+    to_field: adverse_effect
+    to_hint: "adverse effect or side effect name of the 'from_node' drug substance and only if the effect is observed in humans, use standard medical terminology"
+    extract_prompt: >
+      Every (substance_name, adverse_effect) pair — adverse reactions or
+      side effects reported in the label.
+      Only if the effect is observed in humans. Observations in other animals don't count
+    examples:
+      - substance_name: "nirsevimab"
+        adverse_effect: "injection site redness"
+      - substance_name: "nirsevimab"
+        adverse_effect: "fever"
+      - substance_name: "ibuprofen"
+        adverse_effect: "gastrointestinal bleeding"
+    properties:
+      - name: source
+        type: STRING
+        source: pipeline
+        pipeline_field: doc_path
+      - name: publication_date
+        type: STRING
+        source: llm
+        hint: "publication date of the source article in ISO 8601 format (e.g. 2026-03-16). Extract from the article header or dateline."
+        optional: true
