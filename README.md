@@ -15,7 +15,7 @@ extraction, no human means an ungrounded, self-invented schema, no Safeguards
 means unverified hallucinations entering the graph.
 
 For more description, please read
-[https://dgg32.medium.com/helms-guided-and-grounded-knowledge-graphs-fb55daf0c955?postPublishedType=repub].
+[[https://dgg32.medium.com/helms-guided-and-grounded-knowledge-graphs-fb55daf0c955?postPublishedType=repub]].
 
 > **Contributors & AI agents:** read [DESIGN_INVARIANTS.md](DESIGN_INVARIANTS.md)
 > before changing or reviewing code — it lists deliberate design choices that are
