@@ -3,7 +3,7 @@
 A pipeline that extracts a typed knowledge graph from PDF documents, validates
 entities against external registries, persists the graph in LadybugDB or Neo4j,
 and exposes it to AI clients via an MCP server with graph queries and
-just-in-time document context retrieval.
+just-in-time document context retrieval. 
 
 HELMS (Human, LLM, and Safeguards) weaves three threads into a single fabric: a
 human-authored schema and review loop, an LLM that reads the documents and
@@ -13,6 +13,9 @@ that grades every triple before it reaches the graph. Pull any one thread and
 the fabric unravels into a specific failure mode: no LLM means manual
 extraction, no human means an ungrounded, self-invented schema, no Safeguards
 means unverified hallucinations entering the graph.
+
+For more description, please read
+[https://dgg32.medium.com/helms-guided-and-grounded-knowledge-graphs-fb55daf0c955?postPublishedType=repub].
 
 > **Contributors & AI agents:** read [DESIGN_INVARIANTS.md](DESIGN_INVARIANTS.md)
 > before changing or reviewing code — it lists deliberate design choices that are
