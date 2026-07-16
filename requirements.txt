@@ -1,7 +1,7 @@
 anthropic==0.102.0
 litellm>=1.30        # multi-provider LLM routing (anthropic, ollama, openai direct, etc.)
 ladybug==0.17.1          # KuzuDB successor (kuzu archived Oct 2025); API-compatible
-mcp==1.27.1
+mcp==1.28.1
 neo4j>=5.0
 openai
 pydantic==2.12.5
