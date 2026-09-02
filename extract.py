@@ -480,14 +480,16 @@ def build_extraction_model(rels: list[dict], nodes: dict) -> type[BaseModel]:
             rel["from_field"]: (str, ...),
             rel["to_field"]:   (str, ...),
         }
-        for prop in llm_props(nodes[rel["from_node"]]):
-            if prop["name"] not in fields:
-                py_type = _schema_type_to_python(prop.get("type", "STRING"))
-                ann = Optional[py_type] if prop.get("optional") else py_type
-                fields[prop["name"]] = (ann, None if prop.get("optional") else ...)
-
-        for prop in llm_props(nodes[rel["to_node"]]):
-            if prop["name"] not in fields:
+        # The primary key of an llm-only node is carried by from_field /
+        # to_field, so it must NOT become a separate model field: one shared,
+        # unexplained `name` column for both sides is what the model fills with
+        # the relationship type.
+        for side in ("from_node", "to_node"):
+            node_def = nodes[rel[side]]
+            node_pk = primary_key(node_def)
+            for prop in llm_props(node_def):
+                if prop["name"] == node_pk or prop["name"] in fields:
+                    continue
                 py_type = _schema_type_to_python(prop.get("type", "STRING"))
                 ann = Optional[py_type] if prop.get("optional") else py_type
                 fields[prop["name"]] = (ann, None if prop.get("optional") else ...)
@@ -515,12 +517,26 @@ def build_extraction_model(rels: list[dict], nodes: dict) -> type[BaseModel]:
 def _llm_only_props(
     node_def: dict,
     llm_extras: dict,
+    term: str = "",
 ) -> Optional[tuple[dict, dict]]:
-    """Build (props, {}) for a node whose properties are all llm-sourced."""
+    """Build (props, {}) for a node whose properties are all llm-sourced.
+
+    ``term`` is the entity name the LLM extracted for this side of the
+    relationship (``from_field`` / ``to_field``). For a node with an external
+    resolver the primary key comes from that resolver; for an llm-only node
+    there is no other source, so the extracted term IS the primary key.
+
+    Without this, the PK was read from ``llm_extras`` under its own property
+    name — a field the extraction model exposes once for BOTH sides of the
+    relationship, with no hint attached. The model has nothing sensible to put
+    there and fills it with the relationship type, so every node ends up named
+    ``USES`` or ``REQUIRES`` and the semantic check rejects the triple.
+    """
+    pk = primary_key(node_def)
     props: dict = {}
     for p in node_def.get("properties", []):
         if p.get("source") == "llm":
-            val = llm_extras.get(p["name"])
+            val = term if (p["name"] == pk and term) else llm_extras.get(p["name"])
             if val is None and not p.get("optional"):
                 return None
             if val is not None:
@@ -749,7 +765,10 @@ async def process_document(
     for i, rel in enumerate(rels):
         from_node_def = nodes[rel["from_node"]]
         to_node_def   = nodes[rel["to_node"]]
-        all_llm       = llm_props(from_node_def) + llm_props(to_node_def) + llm_rel_props(rel)
+        # Same reason as in build_extraction_model: the PK is the from/to term.
+        _pks          = {primary_key(from_node_def), primary_key(to_node_def)}
+        all_llm       = [p for p in llm_props(from_node_def) + llm_props(to_node_def)
+                         if p["name"] not in _pks] + llm_rel_props(rel)
         extra_hints   = []
         for prop in all_llm:
             hint = prop.get("hint", prop["name"])
@@ -1022,14 +1041,14 @@ async def process_document(
                     from_term, rel["from_node"], from_node_def, from_llm_extras, resolved_map
                 )
             else:
-                from_result = _llm_only_props(from_node_def, from_llm_extras)
+                from_result = _llm_only_props(from_node_def, from_llm_extras, from_term)
 
             if to_resolver is not None:
                 to_result = to_resolver.build_props(
                     to_term, rel["to_node"], to_node_def, to_llm_extras, resolved_map
                 )
             else:
-                to_result = _llm_only_props(to_node_def, to_llm_extras)
+                to_result = _llm_only_props(to_node_def, to_llm_extras, to_term)
 
             if from_result is None:
                 print(f"    SKIP (lookup failed): {rel['from_node']} '{from_term}'")

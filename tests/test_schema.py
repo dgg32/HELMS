@@ -1163,8 +1163,15 @@ class TestBuildExtractionModelEdgeCases:
         field = TreatsModel.model_fields["tags"]
         assert field.default is None  # optional
 
-    def test_duplicate_prop_name_not_duplicated(self, tmp_path):
-        """If from_node and to_node both define a 'name' LLM prop, it appears once."""
+    def test_primary_key_prop_not_a_model_field(self, tmp_path):
+        """A node's PK is carried by from_field/to_field, not by its own field.
+
+        Both nodes here declare an llm-sourced PK called 'name'. Exposing it as
+        a model field gives the LLM one shared, unexplained column for both
+        sides of the relationship — which it fills with the relationship type,
+        so every node ends up named 'TREATS'. The PK must come from drug_name /
+        disease_name instead.
+        """
         schema = textwrap.dedent("""\
             nodes:
               Drug:
@@ -1191,8 +1198,9 @@ class TestBuildExtractionModelEdgeCases:
         nodes, rels = load_schema(path)
         Model = build_extraction_model(rels, nodes)
         TreatsModel = Model.model_fields["TREATS"].annotation.__args__[0]
-        name_fields = [k for k in TreatsModel.model_fields if k == "name"]
-        assert len(name_fields) == 1
+        assert "name" not in TreatsModel.model_fields
+        assert "drug_name" in TreatsModel.model_fields
+        assert "disease_name" in TreatsModel.model_fields
 
     def test_required_rel_prop_no_default(self, tmp_path):
         """Non-optional relationship LLM prop has no default (required)."""
