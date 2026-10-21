@@ -23,7 +23,12 @@ repository.
   report's line-logic claims.
 - **Stay in scope.** Match surrounding style. No drive-by refactors, no renames,
   no new dependencies unless asked.
-- **Tests.** Install the test deps once (`pip install -r requirements-dev.txt`),
+- **Dependencies are hash-locked.** Install with
+  `pip install --require-hashes -r requirements.lock`. Never loosen an exact pin
+  or hand-edit the lock; re-lock with the `uv pip compile` command in its header
+  (and a ≥1-week `--exclude-newer` cooldown). litellm is exactly pinned because
+  1.107.0 on PyPI was a credential stealer.
+- **Tests.** Install the test deps once (included in `requirements.lock`),
   then `python -m pytest -q` must stay green (331 passed, 4 skipped at last
   check). Run it after changes.
 

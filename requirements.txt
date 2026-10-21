@@ -1,5 +1,11 @@
 anthropic==0.102.0
-litellm>=1.30        # multi-provider LLM routing (anthropic, ollama, openai direct, etc.)
+# multi-provider LLM routing (anthropic, ollama, openai direct, etc.)
+# EXACT pin — litellm 1.107.0 on PyPI (2026-10-21) shipped a credential stealer +
+# backdoor (cook.pth / sitecustomize.py). An open range (the old `>=1.30`) would
+# have pulled it. Pinned to a release >=1 week older than the attack; bump
+# deliberately, after the new release has aged, then re-lock (requirements.lock).
+# Never 1.107.0.
+litellm==1.105.0
 ladybug==0.17.1          # KuzuDB successor (kuzu archived Oct 2025); API-compatible
 mcp==1.27.1
 neo4j>=5.0

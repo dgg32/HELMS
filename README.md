@@ -106,8 +106,28 @@ Graph DB
 ```bash
 python3.11 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install --require-hashes -r requirements.lock
 ```
+
+`requirements.lock` is the hash-locked install set (core + web UI + test deps).
+`--require-hashes` makes pip refuse any artifact whose SHA-256 differs from the
+lock, so a tampered or newly-published release cannot slip in — this is the
+defence against PyPI compromises like the
+[litellm 1.107.0 credential stealer](https://safedep.io/litellm-pypi-compromise-credential-stealer-backdoor/)
+(the old `litellm>=1.30` range would have installed it).
+
+To change a dependency, edit `requirements.txt` / `requirements-dev.txt` /
+`htmx_app/requirements_extra.txt`, then re-lock with a cooldown so only
+releases at least a week old are eligible (set `--exclude-newer` to ~7 days ago):
+
+```bash
+uv pip compile requirements.txt htmx_app/requirements_extra.txt requirements-dev.txt \
+  --universal --python-version 3.11 --generate-hashes \
+  --exclude-newer <YYYY-MM-DD>T00:00:00Z -o requirements.lock
+```
+
+`tests/test_supply_chain.py` fails if litellm loses its exact pin, if a
+known-compromised version appears, or if the lock goes stale or unhashed.
 
 ### 2. Configure credentials
 
@@ -292,10 +312,11 @@ project-creation wizard. It shares the same project/run folder layout as the CLI
 
 ### Install extra deps
 
-The UI needs a few packages on top of `requirements.txt`:
+The UI's extra packages (`htmx_app/requirements_extra.txt`) are already part of
+`requirements.lock`, so the locked install from Setup covers them:
 
 ```bash
-pip install -r htmx_app/requirements_extra.txt
+pip install --require-hashes -r requirements.lock
 ```
 
 ### Start
